@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "336644695318",
+    "firebase_url": "https://orderman-a6fda-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "orderman-a6fda",
+    "storage_bucket": "orderman-a6fda.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:336644695318:android:27a74e9760d10642d95c37",
+        "android_client_info": {
+          "package_name": "com.example.orderman"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGkuTzw9lHqvphpiYlx3V5rnV-z6Bf7UM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

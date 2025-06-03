@@ -1,0 +1,24 @@
+// build.gradle (Project: Orderman2)
+
+buildscript {
+    repositories {
+        google()  // Keep this here for buildscript dependencies (like google-services plugin)
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.10.0' // Your AGP version
+        classpath 'com.google.gms:google-services:4.4.2' // Your google-services plugin version
+    }
+}
+
+// REMOVE or comment out the 'allprojects' block below.
+// If you have other configurations in allprojects, only remove the repositories block from it.
+/*
+allprojects {
+    repositories {
+        // REMOVE THESE LINES! They are now defined in settings.gradle
+        google()
+        mavenCentral()
+    }
+}
+*/
