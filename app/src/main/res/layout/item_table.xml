@@ -11,57 +11,59 @@
     app:cardElevation="4dp">
 
     <RelativeLayout
+        android:id="@+id/table_item_status_background"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="16dp">
 
-        <TextView
-            android:id="@+id/text_view_table_number"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Table 1"
-            android:textColor="@android:color/black"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+    <TextView
+        android:id="@+id/text_view_table_number"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Table 1"
+        android:textColor="@color/status_text_light"
+        android:textSize="18sp"
+        android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/text_view_table_status"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:text="Available"
-            android:textSize="16sp"
-            android:textColor="@android:color/holo_green_dark" />
+    <TextView
+        android:id="@+id/text_view_table_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:text="Available"
+        android:textSize="16sp"
+        android:textColor="@color/status_text_light" /> <!-- CHANGE COLOR -->
 
-        <TextView
-            android:id="@+id/text_view_table_capacity"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_below="@id/text_view_table_number"
-            android:layout_marginTop="4dp"
-            android:text="Capacity: 4"
-            android:textSize="14sp"
-            android:textColor="@android:color/darker_gray" />
+    <TextView
+        android:id="@+id/text_view_table_capacity"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/text_view_table_number"
+        android:layout_marginTop="4dp"
+        android:text="Capacity: 4"
+        android:textSize="14sp"
+        android:textColor="@color/status_text_light" /> <!-- CHANGE COLOR -->
 
-        <TextView
-            android:id="@+id/text_view_table_section"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_below="@id/text_view_table_capacity"
-            android:layout_marginTop="2dp"
-            android:text="Section: Indoor"
-            android:textSize="14sp"
-            android:textColor="@android:color/darker_gray" />
+    <TextView
+        android:id="@+id/text_view_table_section"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/text_view_table_capacity"
+        android:layout_marginTop="2dp"
+        android:text="Section: Indoor"
+        android:textSize="14sp"
+        android:textColor="@color/status_text_light" /> <!-- CHANGE COLOR -->
 
-        <TextView
-            android:id="@+id/text_view_table_total_price" android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_below="@id/text_view_table_section"
-            android:layout_marginTop="8dp"
-            android:text="Order Total: €0.00"
-            android:textColor="@android:color/black"
-            android:textSize="16sp"
-            android:textStyle="italic" />
+    <TextView
+        android:id="@+id/text_view_table_total_price"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/text_view_table_section"
+        android:layout_marginTop="8dp"
+        android:text="Order Total: €0.00"
+        android:textColor="@color/status_text_light"
+        android:textSize="16sp"
+        android:textStyle="italic" />
 
     </RelativeLayout>
 </androidx.cardview.widget.CardView>

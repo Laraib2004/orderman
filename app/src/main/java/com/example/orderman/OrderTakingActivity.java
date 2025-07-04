@@ -65,8 +65,36 @@ public class OrderTakingActivity extends AppCompatActivity
     private Button buttonSendOrder; // Declare the send order button
 
     // Map to store quantities of items selected by the user *before* sending the order
-    private Map<String, Integer> pendingOrderItems = new HashMap<>(); // Key: MenuItemId, Value: Quantity
+    private Map<String, PendingOrderItemData> pendingOrderItems = new HashMap<>(); // Key: MenuItemId, Value: Quantity
     private Set<String> currentSelectedCategories = new HashSet<>(); // Tracks selected categories for filtering
+
+
+    // Private static helper class to hold all necessary data for an OrderItem
+    private static class PendingOrderItemData {
+        String menuItemId;
+        int quantity; // This is the *absolute desired quantity* from the UI for this item
+        double price;
+        String name;
+        String category;
+        String type;
+
+        public PendingOrderItemData(String menuItemId, int quantity, double price, String name, String category, String type) {
+            this.menuItemId = menuItemId;
+            this.quantity = quantity;
+            this.price = price;
+            this.name = name;
+            this.category = category;
+            this.type = type;
+        }
+
+        // Getters
+        public String getMenuItemId() { return menuItemId; }
+        public int getQuantity() { return quantity; }
+        public double getPrice() { return price; }
+        public String getName() { return name; }
+        public String getCategory() { return category; }
+        public String getType() { return type; }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -205,22 +233,27 @@ public class OrderTakingActivity extends AppCompatActivity
         }
     }
 
+
     private void updatePendingOrderItem(MenuItem menuItem, int quantity) {
-        // Get the old quantity from the map (or 0 if not present)
-        // API CALL 24 int oldQuantity = pendingOrderItems.getOrDefault(menuItem.getId(), 0);
-        int oldQuantity;
+        int oldQuantity = 0;
+        // Get old quantity from our custom object if it exists
         if (pendingOrderItems.containsKey(menuItem.getId())) {
-            oldQuantity = pendingOrderItems.get(menuItem.getId());
-        } else {
-            oldQuantity = 0;
+            oldQuantity = pendingOrderItems.get(menuItem.getId()).getQuantity();
         }
 
         // Update the quantity in the adapter's internal map for UI display
         menuAdapter.updateItemQuantity(menuItem.getId(), quantity);
 
-        // Update the pendingOrderItems map
+        // Update the pendingOrderItems map with the full data
         if (quantity > 0) {
-            pendingOrderItems.put(menuItem.getId(), quantity);
+            pendingOrderItems.put(menuItem.getId(), new PendingOrderItemData(
+                    menuItem.getId(),
+                    quantity, // This is the absolute desired quantity for the item
+                    menuItem.getPrice(),
+                    menuItem.getName(),
+                    menuItem.getCategory(),
+                    menuItem.getType()
+            ));
         } else {
             pendingOrderItems.remove(menuItem.getId()); // Remove if quantity becomes 0
         }
@@ -229,6 +262,9 @@ public class OrderTakingActivity extends AppCompatActivity
         temporaryOrderTotal += (quantity - oldQuantity) * menuItem.getPrice();
         updateTableInfoDisplay(); // Update UI to reflect temporary total
     }
+
+
+    // Inside OrderTakingActivity.java
 
     private void sendOrderToFirestore() {
         if (FirebaseAuth.getInstance().getCurrentUser() == null) {
@@ -245,6 +281,8 @@ public class OrderTakingActivity extends AppCompatActivity
         Log.d(TAG, "sendOrderToFirestore: Attempting to send order with " + pendingOrderItems.size() + " unique items.");
 
         db.runTransaction(transaction -> {
+            // --- ALL READS FIRST ---
+            // Read the current state of the table
             DocumentSnapshot tableSnapshot = transaction.get(tableDocRef);
             double currentConfirmedTableTotal = 0.0;
             if (tableSnapshot.exists()) {
@@ -254,103 +292,109 @@ public class OrderTakingActivity extends AppCompatActivity
                     Log.d(TAG, "sendOrderToFirestore: Current confirmed table total from DB: " + currentConfirmedTableTotal);
                 }
             } else {
-                Log.e(TAG, "sendOrderToFirestore: Table document not found for ID: " + tableId);
+                Log.e(TAG, "sendOrderToFirestore: Table document not found for ID: " + tableId + ". Assuming new table with 0 total.");
+                // If table doesn't exist, it means this is the very first order for it.
+                // We'll proceed with currentConfirmedTableTotal = 0.0 and it will be created implicitly by transaction.update.
+                // However, if tableDocRef *must* exist beforehand, you should throw an exception here.
+                // throw new FirebaseFirestoreException("Table document not found", FirebaseFirestoreException.Code.NOT_FOUND);
             }
 
-            for (Map.Entry<String, Integer> entry : pendingOrderItems.entrySet()) {
-                String menuItemId = entry.getKey();
-                int quantityToAdd = entry.getValue(); // This is the quantity the user *just added* for this transaction
-
+            // Read all existing OrderItems that are part of the pending order
+            // This needs to be done *before* any writes in the loop.
+            // We'll collect the existing quantities here.
+            Map<String, Integer> existingQuantitiesMap = new HashMap<>();
+            for (String menuItemId : pendingOrderItems.keySet()) {
                 DocumentReference orderItemDocRef = currentOrderSubcollectionRef.document(menuItemId);
-
                 DocumentSnapshot orderItemSnapshot = transaction.get(orderItemDocRef);
-                int existingQuantity = 0;
                 if (orderItemSnapshot.exists()) {
                     OrderItem existingOrderItem = orderItemSnapshot.toObject(OrderItem.class);
                     if (existingOrderItem != null) {
-                        existingQuantity = existingOrderItem.getQuantity();
+                        existingQuantitiesMap.put(menuItemId, existingOrderItem.getQuantity());
                     }
-                }
-
-                // Get MenuItem details (price)
-                MenuItem menuItem = null;
-                for (int i = 0; i < menuAdapter.getItemCount(); i++) {
-                    if (menuAdapter.getItem(i).getId().equals(menuItemId)) {
-                        menuItem = menuAdapter.getItem(i);
-                        break;
-                    }
-                }
-
-                if (menuItem == null) {
-                    Log.e(TAG, "sendOrderToFirestore: MenuItem not found for ID: " + menuItemId + ". Skipping this item.");
-                    continue;
-                }
-
-                double itemPrice = menuItem.getPrice();
-
-                // Calculate the NEW TOTAL quantity
-                int newTotalQuantity = existingQuantity + quantityToAdd; // <--- CRITICAL CHANGE
-
-                // Calculate price change based on the quantity *just added* by the user for this order
-                double priceChange = quantityToAdd * itemPrice; // <--- PRICE CHANGE IS BASED ON QUANTITY ADDED, NOT DELTA
-
-                // Update total price for the table
-                currentConfirmedTableTotal += priceChange;
-
-                if (newTotalQuantity > 0) { // Check newTotalQuantity
-                    OrderItem updatedOrderItem = new OrderItem(
-                            menuItem.getId(),
-                            menuItem.getName(),
-                            menuItem.getPrice(),
-                            newTotalQuantity, // <--- Use the new total quantity
-                            menuItem.getCategory(),
-                            menuItem.getType(),
-                            "Preparing"
-                    );
-                    transaction.set(orderItemDocRef, updatedOrderItem);
-                    Log.d(TAG, "Transaction SET for item " + menuItem.getName() + " with NEW TOTAL quantity " + newTotalQuantity);
-                } else {
-                    // If the new total quantity becomes 0 or less, delete the item
-                    transaction.delete(orderItemDocRef);
-                    Log.d(TAG, "Transaction DELETE for item " + menuItem.getName());
                 }
             }
 
+            // --- ALL WRITES AFTER ALL READS ---
+            // Now, calculate changes and prepare writes based on all collected reads
+            for (Map.Entry<String, PendingOrderItemData> entry : pendingOrderItems.entrySet()) {
+                String menuItemId = entry.getKey();
+                PendingOrderItemData itemData = entry.getValue(); // Get the custom object with all details
+
+                int quantityFromUI = itemData.getQuantity(); // This is the absolute quantity from the UI
+
+                DocumentReference orderItemDocRef = currentOrderSubcollectionRef.document(menuItemId);
+
+                int existingQuantity = existingQuantitiesMap.containsKey(menuItemId) ? existingQuantitiesMap.get(menuItemId) : 0;
+
+                // Calculate the NEW TOTAL quantity that should be in Firestore
+                // This logic assumes `quantityFromUI` is the *final desired quantity* from the UI.
+                // If `quantityFromUI` is the *delta* (e.g., just +1 or -1), then `newTotalQuantity = existingQuantity + quantityFromUI;`
+                // Based on your previous logs and the UI, `quantityFromUI` seems to be the absolute quantity.
+                // So, the change in total price is (quantityFromUI - existingQuantity) * itemPrice.
+                // And the quantity to write is `quantityFromUI`.
+
+                // Let's stick to the interpretation that pendingOrderItems.getQuantity() is the *absolute total* the user wants.
+                int newTotalQuantity = quantityFromUI; // This is the quantity to write to Firestore
+
+                double itemPrice = itemData.getPrice(); // Get price directly from itemData
+                double priceChange = (newTotalQuantity - existingQuantity) * itemPrice; // Calculate actual price change for the total
+
+                // Update total price for the table (this is a local variable in the transaction)
+                currentConfirmedTableTotal += priceChange;
+
+                if (newTotalQuantity > 0) {
+                    // Create or update the OrderItem document using transaction.set()
+                    OrderItem updatedOrderItem = new OrderItem(
+                            itemData.getMenuItemId(),
+                            itemData.getName(),
+                            itemData.getPrice(),
+                            newTotalQuantity, // Use the new total quantity
+                            itemData.getCategory(),
+                            itemData.getType(),
+                            "Preparing" // Default status when ordered
+                    );
+                    transaction.set(orderItemDocRef, updatedOrderItem);
+                    Log.d(TAG, "Transaction SET for item " + itemData.getName() + " (ID: " + itemData.getMenuItemId() + ") with NEW TOTAL quantity " + newTotalQuantity);
+                } else {
+                    // If the new total quantity is 0, delete the item from the order
+                    transaction.delete(orderItemDocRef);
+                    Log.d(TAG, "Transaction DELETE for item " + itemData.getName() + " (ID: " + itemData.getMenuItemId() + ")");
+                }
+            }
+
+            // Update the table's status and total price using transaction.update()
             Map<String, Object> tableUpdates = new HashMap<>();
-            tableUpdates.put("status", "Occupied");
+            tableUpdates.put("status", "Occupied"); // Table becomes occupied if items are sent
             tableUpdates.put("totalPrice", currentConfirmedTableTotal);
             transaction.update(tableDocRef, tableUpdates);
             Log.d(TAG, "Transaction UPDATE for table total to " + currentConfirmedTableTotal);
 
-            return null;
+            return null; // Return null for successful transaction
         }).addOnSuccessListener(aVoid -> {
             Toast.makeText(OrderTakingActivity.this, "Order sent successfully!", Toast.LENGTH_SHORT).show();
             Log.d(TAG, "Order transaction completed successfully.");
 
+            // Clear pending items as they are now sent and confirmed in Firestore
             pendingOrderItems.clear();
 
-            // The UI should reset pending items to 0 because they are now "sent" and "confirmed"
+            // Notify adapter to reset displayed quantities to 0 for pending items
+            // This is crucial for UI consistency, as these items are no longer "pending"
             java.util.Map<String, Integer> selectedItems = menuAdapter.getSelectedItemsWithQuantities();
             for (java.util.Map.Entry<String, Integer> entry : selectedItems.entrySet()) {
                 String itemId = entry.getKey();
                 menuAdapter.updateItemQuantity(itemId, 0); // Set displayed quantity back to 0 (for the *pending* part)
             }
 
-            // The temporaryOrderTotal should now reflect the confirmed total from the transaction
-            // However, given this new logic, the temporaryOrderTotal should already be reflecting the
-            // current state of the UI which now adds quantities.
-            // It's safer to ensure the total is updated by reading from the listener, or if you want
-            // immediate consistency, you could set temporaryOrderTotal = currentConfirmedTableTotal;
-            // but ensure currentTableTotalPrice is also being updated by your listener.
-            // For now, let's keep it as is, assuming the listener will update currentTableTotalPrice.
-            // If the UI doesn't refresh immediately with correct total, consider adding:
-            // temporaryOrderTotal = currentConfirmedTableTotal;
+            // Update temporary total to reflect the new confirmed total from the transaction
+            // The table listener will eventually update currentTableTotalPrice, but this provides immediate UI sync.
+            temporaryOrderTotal = currentTableTotalPrice; // Sync temporary with confirmed after send
             updateTableInfoDisplay();
-
 
         }).addOnFailureListener(e -> {
             Toast.makeText(OrderTakingActivity.this, "Error sending order: " + e.getMessage(), Toast.LENGTH_LONG).show();
             Log.e(TAG, "Order transaction failed: " + e.getMessage(), e);
+            // IMPORTANT: Check Logcat for the exact error message from Firebase.
+            // This is where "needs to execute all reads before writes" would appear.
         });
     }
 
@@ -387,9 +431,9 @@ public class OrderTakingActivity extends AppCompatActivity
                                         // The simplest way is to assume currentTableTotalPrice is the base
                                         // and then add our pending changes.
                                         temporaryOrderTotal = currentTableTotalPrice;
-                                        for (Map.Entry<String, Integer> entry : pendingOrderItems.entrySet()) {
+                                        for (Map.Entry<String, PendingOrderItemData> entry : pendingOrderItems.entrySet()) {
                                             String menuItemId = entry.getKey();
-                                            int pendingQuantity = entry.getValue();
+                                            int pendingQuantity = entry.getValue().getQuantity();
                                             // Find the MenuItem to get its price
                                             MenuItem pendingMenuItem = null;
                                             for (int i = 0; i < menuAdapter.getItemCount(); i++) {

@@ -5,7 +5,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
-
+import android.widget.RelativeLayout;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -31,6 +31,14 @@ public class TableAdapter extends FirestoreRecyclerAdapter<Table, TableAdapter.T
         // Update to display total price, if you have a TextView for it in item_table.xml
         holder.textViewTotalPrice.setText("Order Total: €" + String.format("%.2f", model.getTotalPrice()));
         // Make sure you have a TextView with id `text_view_table_total_price` in `item_table.xml`
+        if ("Available".equalsIgnoreCase(model.getStatus())) {
+            holder.tableItemRootLayout.setBackgroundResource(R.drawable.table_available_background);
+            // Text colors are now set in XML to status_text_light, so no need to change them here
+            // unless you want dynamic text colors based on background
+        } else {
+            holder.tableItemRootLayout.setBackgroundResource(R.drawable.table_occupied_background);
+            // Text colors are now set in XML to status_text_light
+        }
     }
 
     @NonNull
@@ -74,7 +82,9 @@ public class TableAdapter extends FirestoreRecyclerAdapter<Table, TableAdapter.T
         TextView textViewCapacity;
         TextView textViewStatus;
         TextView textViewSection;
-        TextView textViewTotalPrice; // <--- ADD THIS
+        TextView textViewTotalPrice;
+        RelativeLayout tableItemRootLayout;
+
 
         public TableHolder(@NonNull View itemView) {
             super(itemView);
@@ -82,7 +92,8 @@ public class TableAdapter extends FirestoreRecyclerAdapter<Table, TableAdapter.T
             textViewCapacity = itemView.findViewById(R.id.text_view_table_capacity);
             textViewStatus = itemView.findViewById(R.id.text_view_table_status);
             textViewSection = itemView.findViewById(R.id.text_view_table_section);
-            textViewTotalPrice = itemView.findViewById(R.id.text_view_table_total_price); // <--- INITIALIZE THIS
+            textViewTotalPrice = itemView.findViewById(R.id.text_view_table_total_price);
+            tableItemRootLayout = itemView.findViewById(R.id.table_item_status_background);
 
             itemView.setOnClickListener(v -> {
                 int position = getAdapterPosition();
