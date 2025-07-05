@@ -133,19 +133,23 @@ public class MenuItemAdapter extends FirestoreRecyclerAdapter<MenuItem, MenuItem
 
             // Set up click listeners for the new buttons
             buttonPlus.setOnClickListener(v -> {
-                int position = getAdapterPosition();
+                int position = getBindingAdapterPosition();
                 if (position != RecyclerView.NO_POSITION && listener != null) {
                     MenuItem menuItem = getItem(position);
-                    int currentQuantity = itemQuantities.getOrDefault(menuItem.getId(), 0);
+                    int currentQuantity = itemQuantities.containsKey(menuItem.getId())
+                            ? itemQuantities.get(menuItem.getId())
+                            : 0;
                     listener.onPlusClick(menuItem, position, currentQuantity);
                 }
             });
 
             buttonMinus.setOnClickListener(v -> {
-                int position = getAdapterPosition();
+                int position = getBindingAdapterPosition();
                 if (position != RecyclerView.NO_POSITION && listener != null) {
                     MenuItem menuItem = getItem(position);
-                    int currentQuantity = itemQuantities.getOrDefault(menuItem.getId(), 0);
+                    int currentQuantity = itemQuantities.containsKey(menuItem.getId())
+                            ? itemQuantities.get(menuItem.getId())
+                            : 0;
                     listener.onMinusClick(menuItem, position, currentQuantity);
                 }
             });

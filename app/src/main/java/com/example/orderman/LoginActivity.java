@@ -50,6 +50,9 @@ public class LoginActivity extends AppCompatActivity {
         FirebaseUser currentUser = mAuth.getCurrentUser();
         if (currentUser != null) {
             // User is already logged in, fetch their restaurantId and role, then redirect
+            showProgressBar();
+            emailEditText.setText(currentUser.getEmail());
+            passwordEditText.setText("secret");
             fetchUserRestaurantAndRole(currentUser.getUid());
         }
     }
@@ -143,12 +146,14 @@ public class LoginActivity extends AppCompatActivity {
     private void showProgressBar() {
         if (progressBar != null) {
             progressBar.setVisibility(View.VISIBLE);
+            loginButton.setEnabled(false);
         }
     }
 
     private void hideProgressBar() {
         if (progressBar != null) {
             progressBar.setVisibility(View.GONE);
+            loginButton.setEnabled(true);
         }
     }
 }

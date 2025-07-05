@@ -96,14 +96,14 @@ public class TableAdapter extends FirestoreRecyclerAdapter<Table, TableAdapter.T
             tableItemRootLayout = itemView.findViewById(R.id.table_item_status_background);
 
             itemView.setOnClickListener(v -> {
-                int position = getAdapterPosition();
+                int position = getBindingAdapterPosition();
                 if (listener != null && position != RecyclerView.NO_POSITION) {
                     listener.onItemClick(getItem(position), position);
                 }
             });
 
             itemView.setOnLongClickListener(v -> {
-                int position = getAdapterPosition();
+                int position = getBindingAdapterPosition();
                 if (longClickListener != null && position != RecyclerView.NO_POSITION) {
                     return longClickListener.onItemLongClick(getItem(position), position);
                 }

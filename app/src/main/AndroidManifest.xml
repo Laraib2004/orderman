@@ -16,9 +16,6 @@
         android:theme="@style/Theme.OrderManApp"
         tools:targetApi="31">
         <activity
-            android:name=".OrderSummaryAdapter"
-            android:exported="false" />
-        <activity
             android:name=".OrderSummaryActivity"
             android:exported="false" />
         <activity

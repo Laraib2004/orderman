@@ -16,6 +16,11 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
 
     private OnItemActionListener listener;
 
+    public OrderSummaryAdapter() {
+        super(new FirestoreRecyclerOptions.Builder<OrderItem>().build());
+    }
+
+
     public OrderSummaryAdapter(@NonNull FirestoreRecyclerOptions<OrderItem> options) {
         super(options);
     }

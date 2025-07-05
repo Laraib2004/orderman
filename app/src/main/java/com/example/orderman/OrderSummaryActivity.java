@@ -12,7 +12,9 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button; // New import
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -40,6 +42,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private RecyclerView recyclerViewOrderSummary;
     private Button buttonCashPayment; // New button
     private Button buttonCardPayment; // New button
+    private ProgressBar progressBar;
 
     private String restaurantId;
     private String tableId;
@@ -55,6 +58,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
         recyclerViewOrderSummary = findViewById(R.id.recycler_view_order_summary);
         buttonCashPayment = findViewById(R.id.button_cash_payment);
         buttonCardPayment = findViewById(R.id.button_card_payment);
+        progressBar = findViewById(R.id.progress_bar_loading);
 
         // Get data from the Intent
         if (getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
@@ -89,9 +93,11 @@ public class OrderSummaryActivity extends AppCompatActivity {
         });
 
         buttonCardPayment.setOnClickListener(v -> {
+            showProgressBar();
             Log.d(TAG, "Card button clicked for Table " + tableNumber);
             // For now, this button does nothing specific.
             Toast.makeText(this, "Card payment functionality to be implemented.", Toast.LENGTH_SHORT).show();
+            hideProgressBar();
         });
     }
 
@@ -257,10 +263,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
 
     private void finalizeOrderForCash() {
-        // Disable buttons to prevent double clicks during operation
-        buttonCashPayment.setEnabled(false);
-        buttonCardPayment.setEnabled(false);
-
+        showProgressBar();
         // Fetch all documents in the 'currentOrder' subcollection
         itemsOrderedRef.get()
                 .addOnSuccessListener(queryDocumentSnapshots -> {
@@ -297,17 +300,13 @@ public class OrderSummaryActivity extends AppCompatActivity {
                             .addOnFailureListener(e -> {
                                 Toast.makeText(OrderSummaryActivity.this, "Error finalizing order: " + e.getMessage(), Toast.LENGTH_LONG).show();
                                 Log.e(TAG, "Failed to commit batch operations for order finalization: " + e.getMessage(), e);
-                                // Re-enable buttons on failure
-                                buttonCashPayment.setEnabled(true);
-                                buttonCardPayment.setEnabled(true);
+                                hideProgressBar();
                             });
                 })
                 .addOnFailureListener(e -> {
                     Toast.makeText(OrderSummaryActivity.this, "Error fetching order items to finalize: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     Log.e(TAG, "Failed to get current order items for finalization: " + e.getMessage(), e);
-                    // Re-enable buttons on failure
-                    buttonCashPayment.setEnabled(true);
-                    buttonCardPayment.setEnabled(true);
+                    hideProgressBar();
                 });
     }
 
@@ -326,6 +325,22 @@ public class OrderSummaryActivity extends AppCompatActivity {
         if (orderSummaryAdapter != null) {
             orderSummaryAdapter.stopListening();
             Log.d(TAG, "Order summary adapter stopped listening.");
+        }
+    }
+
+    public void showProgressBar() {
+        if (progressBar != null) {
+            progressBar.setVisibility(View.VISIBLE);
+            buttonCashPayment.setEnabled(false);
+            buttonCardPayment.setEnabled(false);
+        }
+    }
+
+    public void hideProgressBar() {
+        if (progressBar != null) {
+            progressBar.setVisibility(View.GONE);
+            buttonCashPayment.setEnabled(true);
+            buttonCardPayment.setEnabled(true);
         }
     }
 }

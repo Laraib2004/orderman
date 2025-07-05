@@ -64,7 +64,7 @@ public class MenuAdapter extends FirestoreRecyclerAdapter<MenuItem, MenuAdapter.
             itemView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    int position = getAdapterPosition();
+                    int position = getBindingAdapterPosition();
                     if (position != RecyclerView.NO_POSITION && listener != null) {
                         listener.onItemClick(getSnapshots().get(position), position);
                     }

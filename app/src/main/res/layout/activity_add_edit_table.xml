@@ -8,12 +8,26 @@
     android:padding="16dp"
     tools:context=".AddEditTableActivity">
 
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Table Number"
+        android:textSize="16sp"
+        android:layout_marginTop="8dp"/>
+
     <EditText
         android:id="@+id/edit_text_table_number"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="Table Number (e.g., 1, A5)"
         android:inputType="text" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Capacity"
+        android:textSize="16sp"
+        android:layout_marginTop="8dp"/>
 
     <EditText
         android:id="@+id/edit_text_table_capacity"
