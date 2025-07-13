@@ -1,0 +1,48 @@
+name: Test and Analyze
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Test & Analyze
+    permissions: write-all
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'oracle'
+          java-version: '21'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Run Android Lint
+        run: ./gradlew lint
+
+      - name: Upload Lint HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-html-report
+          path: app/build/reports/lint-results-debug.html
+
+      - name: Upload SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: app/build/reports/lint-results-debug.sarif
+
+      - name: Run Unit Tests
+        run: ./gradlew test
