@@ -5,15 +5,21 @@ import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
-import android.widget.Button; // New import
+import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,7 +30,21 @@ import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.Query;
-import com.google.firebase.firestore.WriteBatch; // New import
+import com.google.firebase.firestore.WriteBatch;
+import com.stripe.stripeterminal.Terminal;
+import com.stripe.stripeterminal.external.callable.Callback;
+import com.stripe.stripeterminal.external.callable.Cancelable;
+import com.stripe.stripeterminal.external.callable.PaymentIntentCallback;
+import com.stripe.stripeterminal.external.callable.ReaderCallback;
+import com.stripe.stripeterminal.external.callable.TapToPayReaderListener;
+import com.stripe.stripeterminal.external.models.ConnectionConfiguration;
+import com.stripe.stripeterminal.external.models.DiscoveryConfiguration;
+import com.stripe.stripeterminal.external.models.PaymentIntent;
+import com.stripe.stripeterminal.external.models.PaymentIntentParameters;
+import com.stripe.stripeterminal.external.models.Reader;
+import com.stripe.stripeterminal.external.models.TerminalException;
+
+import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -32,7 +52,6 @@ import java.util.Map;
 public class OrderSummaryActivity extends AppCompatActivity {
 
     private static final String TAG = "OrderSummaryActivity";
-
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference itemsOrderedRef; // Reference to the subcollection of ordered items
     private DocumentReference tableDocRef; // Reference to the table document
@@ -95,8 +114,11 @@ public class OrderSummaryActivity extends AppCompatActivity {
         buttonCardPayment.setOnClickListener(v -> {
             showProgressBar();
             Log.d(TAG, "Card button clicked for Table " + tableNumber);
-            // For now, this button does nothing specific.
-            Toast.makeText(this, "Card payment functionality to be implemented.", Toast.LENGTH_SHORT).show();
+
+
+            Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
+            startActivity(discoverIntent);
+
             hideProgressBar();
         });
     }

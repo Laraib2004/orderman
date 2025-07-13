@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.orderman" // Replace with your package name
-        minSdk 21 // Or your min SDK version
+        minSdk 26 // Or your min SDK version
         targetSdk 33 // Or your target SDK version
         versionCode 1
         versionName "1.0"
@@ -30,6 +30,12 @@ android {
     buildFeatures {
         viewBinding true
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
 }
 
 dependencies {
@@ -38,6 +44,15 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
     implementation 'com.google.android.material:material:1.12.0' // Use the latest stable version
+
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Stripe
+    implementation("com.stripe:stripeterminal:4.5.0")
+    implementation "com.stripe:stripeterminal-taptopay:4.5.0"
+    implementation "com.stripe:stripeterminal-core:4.5.0"
+
 
     // Firebase BoM (Bill of Materials) - ALWAYS use the BoM for consistent versions
     implementation(platform("com.google.firebase:firebase-bom:32.7.4")) // Check for latest version on Firebase website

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Allow cleartext traffic to your local backend server -->
+        <!-- 10.0.2.2 is the IP address for your host machine (localhost) from the Android emulator -->
+        <!-- If you are testing on a physical device, replace 10.0.2.2 with your computer's actual local IP address (e.g., 192.168.1.X) -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- If your backend uses 'localhost' directly for some reason (less common for emulator) -->
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+</network-security-config>
