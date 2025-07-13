@@ -1,5 +1,7 @@
 package com.example.orderman;
 
+import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
+
 import android.Manifest;
 import android.os.Bundle;
 import android.util.Log;
@@ -23,6 +25,7 @@ public class PaymentActivity extends AppCompatActivity {
 
     private static final String TAG = "PaymentActivity";
     private Cancelable collectCancelable;
+    private double currentTableTotalPrice;
 
 
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
@@ -31,9 +34,18 @@ public class PaymentActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         Log.d(TAG, "Starting PaymentActivity");
 
+        if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE)) {
+            currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
+        }
+        else {
+            Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
+            Log.e(TAG, "Required Intent extras missing for OrderSummaryActivity.");
+            finish();
+        }
+
         // STEP 1: Create PaymentIntent via backend
         CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider();
-        tokenProvider.createPaymentIntent(1000, new CustomConnectionTokenProvider.CreateIntentCallback() {
+        tokenProvider.createPaymentIntent((int) (currentTableTotalPrice*100), new CustomConnectionTokenProvider.CreateIntentCallback() {
             @Override
             public void onSuccess(String clientSecret) {
                 Log.d(TAG, "Client secret received: " + clientSecret);
@@ -70,6 +82,8 @@ public class PaymentActivity extends AppCompatActivity {
                                                                             public void onSuccess(String status) {
                                                                                 Log.d(TAG, "Payment captured! Status: " + status);
                                                                                 Toast.makeText(PaymentActivity.this, "Payment completed!", Toast.LENGTH_LONG).show();
+                                                                                setResult(RESULT_OK);
+                                                                                finish();
                                                                             }
 
                                                                             @Override

@@ -1,11 +1,17 @@
 package com.example.orderman;
 
+import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
+
 import android.Manifest;
+import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresPermission;
 import androidx.appcompat.app.AppCompatActivity;
@@ -28,12 +34,31 @@ public class DiscoverReadersActivity extends AppCompatActivity {
     public static final String TAG = "DISCOVEREADER";
     private Cancelable discoverCancelable;
     private boolean isDiscovering = false;
+    private double currentTableTotalPrice;
+    ActivityResultLauncher<Intent> launcher;
+
 
 
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        launcher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK) {
+                        // You came back from ActivityB
+                        finish();
+                    }
+                });
+        if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE)) {
+            currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
+        }
+        else {
+            Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
+            Log.e(TAG, "Required Intent extras missing for OrderSummaryActivity.");
+            finish();
+        }
         if (Terminal.getInstance().getConnectedReader() == null) {
             onDiscoverReaders();
         } else {
@@ -43,7 +68,6 @@ public class DiscoverReadersActivity extends AppCompatActivity {
             finish();
         }
     }
-
 
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     public void onDiscoverReaders() {
@@ -80,12 +104,12 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                                 public void onSuccess(@NonNull Reader reader) {
                                     Log.d(TAG, "Connected to reader: " + reader.getSerialNumber());
                                     discoverCancelable = null;
+
                                     Intent paymentIntent = new Intent(DiscoverReadersActivity.this, PaymentActivity.class);
-                                    /*paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
-                                    paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
-                                    paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
-                                    paymentIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);*/
-                                    startActivity(paymentIntent);
+                                    paymentIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+                                    launcher.launch(paymentIntent);
+                                    Log.d(TAG, "Reader disconnected on stop");
+
                                 }
 
                                 @Override
@@ -116,7 +140,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
     @Override
     public void onStop() {
         super.onStop();
-
+        Log.d(TAG, "Discovery stop");
 
     }
 
@@ -129,6 +153,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 @Override
                 public void onSuccess() {
                     Log.d(TAG, "Discovery cancelled successfully");
+                    finish();
                 }
 
                 @Override
@@ -145,6 +170,8 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 public void onSuccess() {
                     Log.d(TAG, "Reader disconnected on stop");
                     isDiscovering = false;
+                    finish();
+
                 }
 
                 @Override

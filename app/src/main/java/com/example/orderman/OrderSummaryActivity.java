@@ -108,7 +108,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
         // Set up click listeners for the new buttons
         buttonCashPayment.setOnClickListener(v -> {
             Log.d(TAG, "Cash button clicked for Table " + tableNumber);
-            finalizeOrderForCash();
+            finalizeOrder();
         });
 
         buttonCardPayment.setOnClickListener(v -> {
@@ -117,7 +117,10 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
 
             Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
+            discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+
             startActivity(discoverIntent);
+            finalizeOrder();
 
             hideProgressBar();
         });
@@ -284,7 +287,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     }
 
 
-    private void finalizeOrderForCash() {
+    private void finalizeOrder() {
         showProgressBar();
         // Fetch all documents in the 'currentOrder' subcollection
         itemsOrderedRef.get()
