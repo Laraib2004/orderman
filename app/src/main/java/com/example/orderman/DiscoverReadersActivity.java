@@ -1,7 +1,9 @@
 package com.example.orderman;
 
+import static com.example.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
+import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
+import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
-
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
@@ -35,6 +37,9 @@ public class DiscoverReadersActivity extends AppCompatActivity {
     private Cancelable discoverCancelable;
     private boolean isDiscovering = false;
     private double currentTableTotalPrice;
+    private String restaurantId;
+    private String tableId;
+    private  int tableNumber;
     ActivityResultLauncher<Intent> launcher;
 
 
@@ -51,8 +56,14 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                         finish();
                     }
                 });
-        if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE)) {
+        if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE) &&
+                getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
+                getIntent().hasExtra(EXTRA_TABLE_ID) &&
+                getIntent().hasExtra(EXTRA_TABLE_NUMBER)) {
             currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
+            restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
+            tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
+            tableNumber = getIntent().getIntExtra(EXTRA_TABLE_NUMBER, 0);
         }
         else {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
@@ -64,7 +75,12 @@ public class DiscoverReadersActivity extends AppCompatActivity {
         } else {
             Log.d(TAG, "Reader already connected. Skipping discovery.");
             // Directly go to PaymentActivity or handle as needed
-            startActivity(new Intent(this, PaymentActivity.class));
+            Intent paymentIntent = new Intent(this, PaymentActivity.class);
+            paymentIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+            paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+            paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
+            paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+            startActivity(paymentIntent);
             finish();
         }
     }
@@ -107,6 +123,9 @@ public class DiscoverReadersActivity extends AppCompatActivity {
 
                                     Intent paymentIntent = new Intent(DiscoverReadersActivity.this, PaymentActivity.class);
                                     paymentIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+                                    paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                                    paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
+                                    paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
                                     launcher.launch(paymentIntent);
                                     Log.d(TAG, "Reader disconnected on stop");
 

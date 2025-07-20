@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -46,7 +47,9 @@ import com.stripe.stripeterminal.external.models.TerminalException;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class OrderSummaryActivity extends AppCompatActivity {
@@ -108,19 +111,72 @@ public class OrderSummaryActivity extends AppCompatActivity {
         // Set up click listeners for the new buttons
         buttonCashPayment.setOnClickListener(v -> {
             Log.d(TAG, "Cash button clicked for Table " + tableNumber);
-            finalizeOrder();
+
+            new AlertDialog.Builder(this)
+                    .setTitle("Confirm Cash Payment")
+                    .setMessage("Are you sure you want to mark this order as paid in cash?")
+                    .setPositiveButton("Yes", (dialog, which) -> {
+                        showProgressBar();
+
+                        String description = "Cash payment for Table " + tableNumber;
+
+                        // Step 1: Fetch all ordered items from Firestore
+                        itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
+                            List<OrderItem> orderItems = new ArrayList<>();
+
+                            for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
+                                OrderItem item = doc.toObject(OrderItem.class);
+                                if (item != null) {
+                                    item.setId(doc.getId()); // Ensure ID is set
+                                    orderItems.add(item);
+                                }
+                            }
+
+                            // Step 2: Pass item list to custom provider
+                            CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
+                            provider.createCashPayment(orderItems, description, new CustomConnectionTokenProvider.CreateCashCallback() {
+                                @Override
+                                public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
+                                    hideProgressBar();
+
+                                    // Optionally open the invoice
+                                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(invoiceUrl));
+                                    startActivity(browserIntent);
+
+                                    Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
+                                    finalizeOrder();
+                                }
+
+                                @Override
+                                public void onFailure(Exception e) {
+                                    hideProgressBar();
+                                    Toast.makeText(OrderSummaryActivity.this, "Failed to process cash payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                    Log.e(TAG, "Cash payment error", e);
+                                }
+                            });
+
+                        }).addOnFailureListener(e -> {
+                            hideProgressBar();
+                            Toast.makeText(OrderSummaryActivity.this, "Failed to fetch order items: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            Log.e(TAG, "Error fetching order items", e);
+                        });
+
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
         });
 
         buttonCardPayment.setOnClickListener(v -> {
             showProgressBar();
             Log.d(TAG, "Card button clicked for Table " + tableNumber);
 
-
             Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
             discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+            discoverIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+            discoverIntent.putExtra(EXTRA_TABLE_ID, tableId);
+            discoverIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
 
             startActivity(discoverIntent);
-            finalizeOrder();
 
             hideProgressBar();
         });
