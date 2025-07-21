@@ -39,7 +39,7 @@ public class LoginActivity extends AppCompatActivity {
     private ProgressBar progressBar;
 
     // Key for passing restaurant ID through intents
-    public static final String EXTRA_RESTAURANT_ID = "com.example.orderman.EXTRA_RESTAURANT_ID";
+    public static final String EXTRA_RESTAURANT_ID = "EXTRA_RESTAURANT_ID";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
