@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.example.orderman' // Replace with your package name
+    namespace 'com.ordrino.orderman' // Replace with your package name
     compileSdk 34 // Or your target SDK version
 
     defaultConfig {
-        applicationId "com.example.orderman" // Replace with your package name
+        applicationId "com.ordrino.orderman" // Replace with your package name
         minSdk 26 // Or your min SDK version
         targetSdk 33 // Or your target SDK version
         versionCode 1
