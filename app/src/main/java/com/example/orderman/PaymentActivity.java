@@ -1,6 +1,7 @@
 package com.example.orderman;
 
 import static com.example.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
+import static com.example.orderman.OrderSummaryActivity.EXTRA_INVOICE_PDF_URL;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
@@ -110,8 +111,10 @@ public class PaymentActivity extends AppCompatActivity {
                                                                                 Toast.makeText(PaymentActivity.this, "Payment completed!", Toast.LENGTH_LONG).show();
                                                                                 finalizeOrder();
                                                                                 // Optionally open the invoice
-                                                                                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(invoiceUrl));
-                                                                                startActivity(browserIntent);
+                                                                                // Optionally open the invoice
+                                                                                Intent qr = new Intent(PaymentActivity.this, InvoiceQRCodeActivity.class);
+                                                                                qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                                                                startActivity(qr);
                                                                                 setResult(RESULT_OK);
                                                                                 finish();
                                                                             }

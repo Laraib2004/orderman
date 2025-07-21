@@ -28,8 +28,11 @@
         android:theme="@style/Theme.OrderManApp"
         tools:targetApi="31">
         <activity
+            android:name=".InvoiceQRCodeActivity"
+            android:exported="false" />
+        <activity
             android:name=".PaymentActivity"
-            android:exported="false"/>
+            android:exported="false" />
         <activity
             android:name=".DiscoverReadersActivity"
             android:exported="false" />

@@ -5,17 +5,12 @@ import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.example.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -32,20 +27,6 @@ import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.WriteBatch;
-import com.stripe.stripeterminal.Terminal;
-import com.stripe.stripeterminal.external.callable.Callback;
-import com.stripe.stripeterminal.external.callable.Cancelable;
-import com.stripe.stripeterminal.external.callable.PaymentIntentCallback;
-import com.stripe.stripeterminal.external.callable.ReaderCallback;
-import com.stripe.stripeterminal.external.callable.TapToPayReaderListener;
-import com.stripe.stripeterminal.external.models.ConnectionConfiguration;
-import com.stripe.stripeterminal.external.models.DiscoveryConfiguration;
-import com.stripe.stripeterminal.external.models.PaymentIntent;
-import com.stripe.stripeterminal.external.models.PaymentIntentParameters;
-import com.stripe.stripeterminal.external.models.Reader;
-import com.stripe.stripeterminal.external.models.TerminalException;
-
-import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -70,6 +51,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private String tableId;
     private int tableNumber;
     private double currentTableTotalPrice;
+    public static String EXTRA_INVOICE_PDF_URL = "EXTRA_INVOICE_PDF_URL";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -140,8 +122,9 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                     hideProgressBar();
 
                                     // Optionally open the invoice
-                                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(invoiceUrl));
-                                    startActivity(browserIntent);
+                                    Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
+                                    qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                    startActivity(qr);
 
                                     Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
                                     finalizeOrder();
