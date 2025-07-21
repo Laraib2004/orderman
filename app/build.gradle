@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.example.orderman' // Replace with your package name
+    namespace 'com.ordrino.orderman' // Replace with your package name
     compileSdk 34 // Or your target SDK version
 
     defaultConfig {
-        applicationId "com.example.orderman" // Replace with your package name
+        applicationId "com.ordrino.orderman" // Replace with your package name
         minSdk 26 // Or your min SDK version
         targetSdk 33 // Or your target SDK version
         versionCode 1
@@ -48,13 +48,9 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    implementation 'com.google.zxing:core:3.5.2'
-    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
-
-
     // Stripe
     implementation("com.stripe:stripeterminal:4.5.0")
-    implementation "com.stripe:stripeterminal-taptopay:4.5.0"
+    implementation "com.stripe:stripeterminal-taptopay:4.5.1"
     implementation "com.stripe:stripeterminal-core:4.5.0"
 
 
