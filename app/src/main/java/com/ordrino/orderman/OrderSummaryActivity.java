@@ -24,6 +24,7 @@ import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.GeoPoint;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.WriteBatch;
 
@@ -38,6 +39,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference itemsOrderedRef; // Reference to the subcollection of ordered items
     private DocumentReference tableDocRef; // Reference to the table document
+    private DocumentReference restaurantDocRef;
 
     private OrderSummaryAdapter orderSummaryAdapter; // Assuming you have an adapter for the summary
     private TextView textViewSummaryTableInfo;
@@ -77,6 +79,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
             // Initialize Firestore references
             tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
             itemsOrderedRef = tableDocRef.collection("currentOrder");
+            restaurantDocRef = db.collection("restaurants").document(restaurantId);
 
             setTitle("Order Summary - Table " + tableNumber);
             updateSummaryTableInfoDisplay();
@@ -100,47 +103,70 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         showProgressBar();
 
                         String description = "Cash payment for Table " + tableNumber;
+                        restaurantDocRef.get().addOnCompleteListener(task -> {
+                            if (task.isSuccessful()) {
+                                DocumentSnapshot document = task.getResult();
+                                if(document.exists()) {
+                                    String address = document.getString("address");
+                                    String city = document.getString("city");
+                                    String country = document.getString("country");
+                                    String name = document.getString("name");
+                                    String province = document.getString("province");
+                                    String recipientCode = document.getString("recipient_code");
+                                    String vatNumber = document.getString("vat_number");
+                                    GeoPoint location = document.getGeoPoint("location"); // Assuming it's a String
 
-                        // Step 1: Fetch all ordered items from Firestore
-                        itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
-                            List<OrderItem> orderItems = new ArrayList<>();
+                                    // Step 1: Fetch all ordered items from Firestore
+                                    itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
+                                        List<OrderItem> orderItems = new ArrayList<>();
 
-                            for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
-                                OrderItem item = doc.toObject(OrderItem.class);
-                                if (item != null) {
-                                    item.setId(doc.getId()); // Ensure ID is set
-                                    orderItems.add(item);
+                                        for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
+                                            OrderItem item = doc.toObject(OrderItem.class);
+                                            if (item != null) {
+                                                item.setId(doc.getId()); // Ensure ID is set
+                                                orderItems.add(item);
+                                            }
+                                        }
+
+                                        // Step 2: Pass item list to custom provider
+                                        CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
+                                        provider.createCashPayment(
+                                                address, city, country, name, province, recipientCode, vatNumber,
+                                                orderItems, description, new CustomConnectionTokenProvider.CreateCashCallback() {
+                                            @Override
+                                            public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
+                                                hideProgressBar();
+
+                                                // Optionally open the invoice
+                                                Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
+                                                qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                                startActivity(qr);
+
+                                                Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
+                                                finalizeOrder();
+                                            }
+
+                                            @Override
+                                            public void onFailure(Exception e) {
+                                                hideProgressBar();
+                                                Toast.makeText(OrderSummaryActivity.this, "Failed to process cash payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                                Log.e(TAG, "Cash payment error", e);
+                                            }
+                                        });
+
+                                    }).addOnFailureListener(e -> {
+                                        hideProgressBar();
+                                        Toast.makeText(OrderSummaryActivity.this, "Failed to fetch order items: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                        Log.e(TAG, "Error fetching order items", e);
+                                    });
+                                } else {
+                                    Log.d(TAG, "No such document for restaurantId: " + restaurantId);
                                 }
+
+                            } else {
+                                Log.e(TAG, "Failed to get restaurant document: ", task.getException());
                             }
 
-                            // Step 2: Pass item list to custom provider
-                            CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
-                            provider.createCashPayment(orderItems, description, new CustomConnectionTokenProvider.CreateCashCallback() {
-                                @Override
-                                public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
-                                    hideProgressBar();
-
-                                    // Optionally open the invoice
-                                    Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
-                                    qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
-                                    startActivity(qr);
-
-                                    Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
-                                    finalizeOrder();
-                                }
-
-                                @Override
-                                public void onFailure(Exception e) {
-                                    hideProgressBar();
-                                    Toast.makeText(OrderSummaryActivity.this, "Failed to process cash payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                                    Log.e(TAG, "Cash payment error", e);
-                                }
-                            });
-
-                        }).addOnFailureListener(e -> {
-                            hideProgressBar();
-                            Toast.makeText(OrderSummaryActivity.this, "Failed to fetch order items: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                            Log.e(TAG, "Error fetching order items", e);
                         });
 
                     })

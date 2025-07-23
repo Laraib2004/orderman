@@ -66,13 +66,13 @@ public class LoginActivity extends AppCompatActivity {
             }
         };
 
-// Choose the level of messages that should be logged to your console
+        // Choose the level of messages that should be logged to your console
         LogLevel logLevel = LogLevel.VERBOSE;
 
-// Create your token provider.
+        // Create your token provider.
         CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider();
 
-// Pass in the current application context, your desired logging level, your token provider, and the listener you created
+        // Pass in the current application context, your desired logging level, your token provider, and the listener you created
         if (!Terminal.isInitialized()) {
             try {
                 Terminal.initTerminal(getApplicationContext(), logLevel, tokenProvider, listener);

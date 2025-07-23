@@ -8,6 +8,7 @@ import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.GeoPoint;
 import com.stripe.stripeterminal.external.callable.ConnectionTokenCallback;
 import com.stripe.stripeterminal.external.callable.ConnectionTokenProvider;
 import com.stripe.stripeterminal.external.models.ConnectionTokenException;
@@ -31,6 +32,8 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference itemsOrderedRef; // Reference to the subcollection of ordered items
     private DocumentReference tableDocRef; // Reference to the table document
+    private DocumentReference restaurantDocRef;
+
 
     @Override
     public void fetchConnectionToken(final ConnectionTokenCallback callback) {
@@ -113,72 +116,100 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     }
 
     // ✅ Method to capture a PaymentIntent
-    public void capturePaymentIntent(String restaurantId, String tableId, String paymentIntentId, CaptureIntentCallback callback) {
+    public void capturePaymentIntent(
+            String restaurantId, String tableId, String paymentIntentId, CaptureIntentCallback callback
+    ) {
         // Initialize Firestore references
         tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
         itemsOrderedRef = tableDocRef.collection("currentOrder");
-        itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
-            executor.execute(() -> {
-                try {
-                    List<OrderItem> orderItems = new ArrayList<>();
+        restaurantDocRef = db.collection("restaurants").document(restaurantId);
+        restaurantDocRef.get().addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        DocumentSnapshot document = task.getResult();
+                        if (document.exists()) {
+                            String address = document.getString("address");
+                            String city = document.getString("city");
+                            String country = document.getString("country");
+                            String name = document.getString("name");
+                            String province = document.getString("province");
+                            String recipientCode = document.getString("recipient_code");
+                            String vatNumber = document.getString("vat_number");
+                            GeoPoint location = document.getGeoPoint("location"); // Assuming it's a String
+                            itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
+                                executor.execute(() -> {
+                                    try {
+                                        List<OrderItem> orderItems = new ArrayList<>();
 
-                    for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
-                        OrderItem item = doc.toObject(OrderItem.class);
-                        if (item != null) {
-                            item.setId(doc.getId()); // Ensure ID is set
-                            orderItems.add(item);
+                                        for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
+                                            OrderItem item = doc.toObject(OrderItem.class);
+                                            if (item != null) {
+                                                item.setId(doc.getId()); // Ensure ID is set
+                                                orderItems.add(item);
+                                            }
+                                        }
+                                        URL url = new URL("https://ordrino-backend.onrender.com/capture_payment_intent");
+
+                                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                                        conn.setRequestMethod("POST");
+                                        conn.setRequestProperty("Content-Type", "application/json");
+                                        conn.setDoOutput(true);
+
+                                        JSONObject body = new JSONObject();
+                                        body.put("payment_intent_id", paymentIntentId);
+                                        body.put("business_address", address);
+                                        body.put("business_city", city);
+                                        body.put("business_country", country);
+                                        body.put("business_name", name);
+                                        body.put("province", province);  // Note: Check spelling ("province" vs "province")
+                                        body.put("recipient_code", recipientCode);
+                                        body.put("business_vat", vatNumber);
+
+
+                                        JSONArray itemsArray = new JSONArray();
+                                        for (OrderItem item : orderItems) {
+                                            JSONObject itemJson = new JSONObject();
+                                            itemJson.put("name", item.getName());
+                                            itemJson.put("quantity", item.getQuantity());
+                                            itemJson.put("unit_price", (int) (item.getPrice()*100)); // In cents
+                                            itemsArray.put(itemJson);
+                                        }
+
+                                        body.put("items", itemsArray);
+
+                                        OutputStream os = conn.getOutputStream();
+                                        os.write(body.toString().getBytes());
+                                        os.flush();
+                                        os.close();
+
+                                        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                                        StringBuilder response = new StringBuilder();
+                                        String inputLine;
+
+                                        while ((inputLine = in.readLine()) != null) {
+                                            response.append(inputLine);
+                                        }
+                                        in.close();
+
+                                        JSONObject jsonResponse = new JSONObject(response.toString());
+                                        String status = jsonResponse.getString("status");
+                                        String invoiceUrl = jsonResponse.getString("hosted_invoice_url");
+                                        String invoicePdfUrl = jsonResponse.getString("invoice_pdf");
+
+                                        mainHandler.post(() -> callback.onSuccess(status, invoiceUrl, invoicePdfUrl));
+
+                                    } catch (Exception e) {
+                                        mainHandler.post(() -> callback.onFailure(e));
+                                    }
+                                });
+                            });
                         }
                     }
-                    URL url = new URL("https://ordrino-backend.onrender.com/capture_payment_intent");
-
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("POST");
-                    conn.setRequestProperty("Content-Type", "application/json");
-                    conn.setDoOutput(true);
-
-                    JSONObject body = new JSONObject();
-                    body.put("payment_intent_id", paymentIntentId);
-
-                    JSONArray itemsArray = new JSONArray();
-                    for (OrderItem item : orderItems) {
-                        JSONObject itemJson = new JSONObject();
-                        itemJson.put("name", item.getName());
-                        itemJson.put("quantity", item.getQuantity());
-                        itemJson.put("unit_price", (int) (item.getPrice()*100)); // In cents
-                        itemsArray.put(itemJson);
-                    }
-
-                    body.put("items", itemsArray);
-
-                    OutputStream os = conn.getOutputStream();
-                    os.write(body.toString().getBytes());
-                    os.flush();
-                    os.close();
-
-                    BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder response = new StringBuilder();
-                    String inputLine;
-
-                    while ((inputLine = in.readLine()) != null) {
-                        response.append(inputLine);
-                    }
-                    in.close();
-
-                    JSONObject jsonResponse = new JSONObject(response.toString());
-                    String status = jsonResponse.getString("status");
-                    String invoiceUrl = jsonResponse.getString("hosted_invoice_url");
-                    String invoicePdfUrl = jsonResponse.getString("invoice_pdf");
-
-                    mainHandler.post(() -> callback.onSuccess(status, invoiceUrl, invoicePdfUrl));
-
-                } catch (Exception e) {
-                    mainHandler.post(() -> callback.onFailure(e));
-                }
-            });
-        });
+                });
     }
 
-    public void createCashPayment(List<OrderItem> items, String description, CreateCashCallback callback) {
+    public void createCashPayment(String address, String city, String country,
+          String name, String province, String recipientCode, String vatNumber,
+          List<OrderItem> items, String description, CreateCashCallback callback) {
         executor.execute(() -> {
             try {
                 URL url = new URL("https://ordrino-backend.onrender.com/cash_payment");
@@ -190,6 +221,13 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 JSONObject body = new JSONObject();
                 body.put("currency", "eur");
                 body.put("description", description);
+                body.put("business_address", address);
+                body.put("business_city", city);
+                body.put("business_country", country);
+                body.put("business_name", name);
+                body.put("province", province);  // Note: Check spelling ("province" vs "province")
+                body.put("recipient_code", recipientCode);
+                body.put("business_vat", vatNumber);
 
                 JSONArray itemsArray = new JSONArray();
                 for (OrderItem item : items) {
