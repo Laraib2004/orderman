@@ -187,6 +187,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
             startActivity(discoverIntent);
 
             hideProgressBar();
+            finish();
         });
     }
 

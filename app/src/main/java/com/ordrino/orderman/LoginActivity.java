@@ -18,19 +18,10 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.stripe.stripeterminal.Terminal;
-import com.stripe.stripeterminal.external.callable.TerminalListener;
-import com.stripe.stripeterminal.external.models.ConnectionStatus;
-import com.stripe.stripeterminal.external.models.PaymentStatus;
-import com.stripe.stripeterminal.external.models.TerminalException;
-import com.stripe.stripeterminal.log.LogLevel;
-
-import org.jetbrains.annotations.NotNull;
 
 public class LoginActivity extends AppCompatActivity {
 
     private static final String TAG = "LoginActivity";
-    private static final int REQUEST_CODE_LOCATION = 100;
     private FirebaseAuth mAuth;
     private FirebaseFirestore db;
     private EditText emailEditText;
@@ -45,41 +36,6 @@ public class LoginActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
-
-        if (ContextCompat.checkSelfPermission(this,
-                android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            String[] permissions = {
-                    android.Manifest.permission.ACCESS_FINE_LOCATION
-            };
-            ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE_LOCATION);
-        }
-        // Create your listener object. Override any methods that you want to be notified about
-        TerminalListener listener = new TerminalListener() {
-            @Override
-            public void onConnectionStatusChange(ConnectionStatus status) {
-                Log.d(TAG, "onConnectionStatusChange: "+status);
-            }
-
-            @Override
-            public void onPaymentStatusChange(PaymentStatus status) {
-                Log.d(TAG, "onPaymentStatusChange: "+status);
-            }
-        };
-
-        // Choose the level of messages that should be logged to your console
-        LogLevel logLevel = LogLevel.VERBOSE;
-
-        // Create your token provider.
-        CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider();
-
-        // Pass in the current application context, your desired logging level, your token provider, and the listener you created
-        if (!Terminal.isInitialized()) {
-            try {
-                Terminal.initTerminal(getApplicationContext(), logLevel, tokenProvider, listener);
-            } catch (TerminalException e) {
-                throw new RuntimeException(e);
-            }
-        }
 
 
         mAuth = FirebaseAuth.getInstance();
@@ -190,20 +146,6 @@ public class LoginActivity extends AppCompatActivity {
         intent.putExtra(EXTRA_RESTAURANT_ID, restaurantId); // Pass the restaurantId
         startActivity(intent);
         finish();
-    }
-
-    @Override
-    public void onRequestPermissionsResult(
-            int requestCode,
-            @NotNull String[] permissions,
-            @NotNull int[] grantResults
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode == REQUEST_CODE_LOCATION && grantResults.length > 0 &&
-                grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-            throw new RuntimeException("Location services are required to connect to a reader.");
-        }
     }
 
     private void showProgressBar() {

@@ -113,13 +113,18 @@ public class OrderTakingActivity extends AppCompatActivity
         }
 
         findViewById(R.id.button_view_order_summary).setOnClickListener(v -> {
-            Toast.makeText(this, "Order summary for Table " + tableNumber + " (Current Confirmed Total: €" + String.format("%.2f", currentTableTotalPrice) + ")", Toast.LENGTH_SHORT).show();
-            Intent summaryIntent = new Intent(OrderTakingActivity.this, OrderSummaryActivity.class);
-            summaryIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
-            summaryIntent.putExtra(EXTRA_TABLE_ID, tableId);
-            summaryIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
-            summaryIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
-            startActivity(summaryIntent);
+            if (currentTableTotalPrice > 0) {
+                Toast.makeText(this, "Order summary for Table " + tableNumber + " (Current Confirmed Total: €" + String.format("%.2f", currentTableTotalPrice) + ")", Toast.LENGTH_SHORT).show();
+                Intent summaryIntent = new Intent(OrderTakingActivity.this, OrderSummaryActivity.class);
+                summaryIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                summaryIntent.putExtra(EXTRA_TABLE_ID, tableId);
+                summaryIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+                summaryIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+                startActivity(summaryIntent);
+            } else {
+                Toast.makeText(this, "No orders to show!", Toast.LENGTH_LONG).show();
+            }
+
         });
 
         String[] categoryArray = getResources().getStringArray(R.array.category_item);
