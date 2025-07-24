@@ -84,11 +84,26 @@
         android:textSize="16sp"
         android:layout_marginTop="8dp"/>
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:layout_marginTop="8dp"
+        android:text="Tax Code" />
+
+    <Spinner
+        android:id="@+id/spinner_tax_code"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:layout_marginTop="8dp"/>
+
     <CheckBox
         android:id="@+id/checkbox_available"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textSize="16sp"
+        android:checked="true"
         android:text="Available"
         android:layout_marginTop="8dp"/>
 
@@ -108,5 +123,13 @@
         android:textSize="16sp"
         android:layout_marginTop="24dp"
         android:text="Save Menu Item"/>
+
+    <!-- Loading Spinner (ProgressBar) - Overlaid in the center -->
+    <ProgressBar
+        android:id="@+id/progress_bar_loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:visibility="gone" />
 
 </LinearLayout>

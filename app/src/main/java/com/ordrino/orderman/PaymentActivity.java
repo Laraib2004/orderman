@@ -51,6 +51,7 @@ public class PaymentActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_payment);
         Log.d(TAG, "Starting PaymentActivity");
 
         if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE) &&

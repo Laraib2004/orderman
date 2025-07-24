@@ -266,6 +266,50 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
         });
     }
 
+    public void createOrupdateProduct(MenuItem item, boolean create, CreateUpdateProductCallback callback) {
+        executor.execute(() -> {
+            try {
+                URL url = new URL("https://ordrino-backend.onrender.com/create-update-product");
+
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+
+                JSONObject body = new JSONObject();
+                body.put("create", create);
+                body.put("itemName", item.getName());
+                body.put("unit_amount", (int)(item.getPrice()*100)); // in cents
+                body.put("available", item.isAvailable());
+                body.put("description", item.getDescription());
+                body.put("tax_code", item.getTaxCode());
+                body.put("prod_id", item.getProdId());
+
+                OutputStream os = conn.getOutputStream();
+                os.write(body.toString().getBytes());
+                os.flush();
+                os.close();
+
+                BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String inputLine;
+
+                while ((inputLine = in.readLine()) != null) {
+                    response.append(inputLine);
+                }
+                in.close();
+
+                JSONObject jsonResponse = new JSONObject(response.toString());
+                String status = jsonResponse.getString("prodId");
+
+                mainHandler.post(() -> callback.onSuccess(status));
+
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onFailure(e));
+            }
+        });
+    }
+
 
 
     // 🔹 Callback Interfaces
@@ -281,6 +325,11 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
 
     public interface CreateCashCallback {
         void onSuccess(String hostedInvoiceUrl, String invoicePdfUrl);
+        void onFailure(Exception e);
+    }
+
+    public interface CreateUpdateProductCallback {
+        void onSuccess(String prodId);
         void onFailure(Exception e);
     }
 

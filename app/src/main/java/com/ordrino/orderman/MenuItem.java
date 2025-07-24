@@ -15,12 +15,15 @@ public class MenuItem implements Serializable {
     private String type;
     private boolean available;
     private String imageUrl;
+    private String taxCode;
+    private String prodId;
 
     // Required public no-argument constructor for Firestore deserialization
     public MenuItem() {}
 
     // Constructor for creating new MenuItems (id is usually null initially for new items)
-    public MenuItem(String name, String description, double price, String category, String type, boolean available, String imageUrl) {
+    public MenuItem(String name, String description, double price, String category, String type,
+                    boolean available, String imageUrl, String taxCode, String prodId) {
         this.name = name;
         this.description = description;
         this.price = price;
@@ -28,6 +31,8 @@ public class MenuItem implements Serializable {
         this.type = type;
         this.available = available;
         this.imageUrl = imageUrl;
+        this.taxCode = taxCode;
+        this.prodId = prodId;
     }
 
     // Getters and Setters
@@ -53,4 +58,8 @@ public class MenuItem implements Serializable {
     public void setAvailable(boolean available) { this.available = available; }
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    public String getTaxCode() { return taxCode; }
+    public void setTaxCode(String taxCode) { this.taxCode = taxCode; }
+    public String getProdId() { return prodId; }
+    public void setProdId(String prodId) { this.prodId = prodId; }
 }

@@ -53,6 +53,8 @@ public class DiscoverReadersActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_discover_readers);
+
         launcher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
