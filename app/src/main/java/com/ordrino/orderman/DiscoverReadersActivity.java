@@ -4,6 +4,7 @@ import static com.ordrino.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
+
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
@@ -48,7 +49,6 @@ public class DiscoverReadersActivity extends AppCompatActivity {
     ActivityResultLauncher<Intent> launcher;
 
 
-
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,6 +60,13 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 result -> {
                     if (result.getResultCode() == Activity.RESULT_OK) {
                         // You came back from ActivityB
+                        finish();
+                    }
+                    else {
+                        // Payment was cancelled or failed. Stay on this screen.
+                        Log.d(TAG, "Payment was cancelled or failed. Remaining on reader discovery screen." + result.getResultCode());
+                        // You could optionally show a toast here, but the payment activity
+                        // already shows one, so it might be redundant.
                         finish();
                     }
                 });
@@ -76,6 +83,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
             Log.e(TAG, "Required Intent extras missing for OrderSummaryActivity.");
             finish();
+            return;
         }
 
         if (ContextCompat.checkSelfPermission(this,
@@ -123,8 +131,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
             paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
             paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
             paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
-            startActivity(paymentIntent);
-            finish();
+            launcher.launch(paymentIntent);
         }
     }
 
@@ -154,6 +161,15 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 configDiscover,
                 readers -> {
                     isDiscovering = false;
+                    if (readers.isEmpty()) {
+                        Log.d(TAG, "No readers found. Please try again.");
+                        runOnUiThread(() -> {
+                            Toast.makeText(this, "No readers found. Please try again.", Toast.LENGTH_LONG).show();
+                            finish();
+                        });
+                        return;
+                    }
+
                     Reader reader = readers.get(0); // Already discovered
                     Log.d(TAG, reader.toString());
                     String connectLocationId = null;
@@ -178,20 +194,24 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                                     Log.d(TAG, "Connected to reader: " + reader.getSerialNumber());
                                     discoverCancelable = null;
 
-                                    Intent paymentIntent = new Intent(DiscoverReadersActivity.this, PaymentActivity.class);
-                                    paymentIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
-                                    paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
-                                    paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
-                                    paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
-                                    launcher.launch(paymentIntent);
-                                    Log.d(TAG, "Reader disconnected on stop");
-
+                                    runOnUiThread(() -> {
+                                        Intent paymentIntent = new Intent(DiscoverReadersActivity.this, PaymentActivity.class);
+                                        paymentIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+                                        paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                                        paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
+                                        paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+                                        launcher.launch(paymentIntent);
+                                    });
                                 }
 
                                 @Override
                                 public void onFailure(TerminalException e) {
                                     // Placeholder for handling exception
                                     Log.e(TAG, "Failed to connect to reader", e);
+                                    runOnUiThread(() -> {
+                                        Toast.makeText(DiscoverReadersActivity.this, "Failed to connect to reader.", Toast.LENGTH_LONG).show();
+                                        finish();
+                                    });
                                 }
                             }
                     );
@@ -201,12 +221,17 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                     public void onSuccess() {
                         // Placeholder for handling successful operation
                         Log.d(TAG, "Reader discovery started successfully");
+                        // No UI changes needed here, as the discovery process is ongoing.
                     }
 
                     @Override
                     public void onFailure(TerminalException e) {
                         // Placeholder for handling exception
                         Log.e(TAG, "Reader discovery failed", e);
+                        runOnUiThread(() -> {
+                            Toast.makeText(DiscoverReadersActivity.this, "Reader discovery failed.", Toast.LENGTH_LONG).show();
+                            finish();
+                        });
                     }
                 }
 
@@ -229,12 +254,18 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 @Override
                 public void onSuccess() {
                     Log.d(TAG, "Discovery cancelled successfully");
-                    finish();
+                    runOnUiThread(() -> {
+                        finish();
+                    });
                 }
 
                 @Override
                 public void onFailure(TerminalException e) {
                     Log.e(TAG, "Failed to cancel discovery", e);
+                    runOnUiThread(() -> {
+                        Toast.makeText(DiscoverReadersActivity.this, "Failed to cancel discovery.", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
                 }
             });
             discoverCancelable = null;
@@ -246,14 +277,19 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 public void onSuccess() {
                     Log.d(TAG, "Reader disconnected on stop");
                     isDiscovering = false;
-                    finish();
-
+                    runOnUiThread(() -> {
+                        finish();
+                    });
                 }
 
                 @Override
                 public void onFailure(@NonNull TerminalException e) {
                     Log.e(TAG, "Failed to disconnect reader", e);
                     isDiscovering = false;
+                    runOnUiThread(() -> {
+                        Toast.makeText(DiscoverReadersActivity.this, "Failed to disconnect reader.", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
                 }
             });
         }

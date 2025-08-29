@@ -17,4 +17,5 @@
     <color name="status_text_light">#FFFFFF</color>       <!-- White text for contrast -->
     <color name="card_background_light">#FFFFFF</color> <!-- Default card background -->
     <color name="card_border_light">#EEEEEE</color>    <!-- Light border for cards -->
+    <color name="red_500">#F44336</color>
 </resources>

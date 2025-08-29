@@ -3,6 +3,7 @@ package com.ordrino.orderman;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.TextView;
 
@@ -12,9 +13,13 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, OrderSummaryAdapter.OrderItemHolder> {
 
     private OnItemActionListener listener;
+    private Map<String, OrderItem> selectedItems = new HashMap<>();
 
     public OrderSummaryAdapter() {
         super(new FirestoreRecyclerOptions.Builder<OrderItem>().build());
@@ -30,6 +35,8 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
         holder.textViewName.setText(model.getName());
         holder.textViewQuantity.setText(String.valueOf(model.getQuantity()));
         holder.textViewPrice.setText(String.format("€%.2f", model.getPrice() * model.getQuantity()));
+
+        holder.checkBox.setChecked(selectedItems.containsKey(model.getId()));
 
         holder.buttonIncrement.setOnClickListener(v -> {
             if (listener != null) {
@@ -48,6 +55,17 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
                 listener.onRemoveClick(model);
             }
         });
+
+        holder.checkBox.setOnCheckedChangeListener(null); // Clear previous listener
+        holder.checkBox.setChecked(selectedItems.containsKey(model.getId()));
+        holder.checkBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                selectedItems.put(model.getId(), model);
+            } else {
+                selectedItems.remove(model.getId());
+            }
+        });
+
     }
 
     @NonNull
@@ -57,9 +75,20 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
         return new OrderItemHolder(view);
     }
 
+
+    public Map<String, OrderItem> getSelectedItems() {
+        return selectedItems;
+    }
+
+    public void clearSelectedItems() {
+        selectedItems.clear();
+        notifyDataSetChanged();
+    }
+
     public void setOnItemActionListener(OnItemActionListener listener) {
         this.listener = listener;
     }
+
 
     public interface OnItemActionListener {
         void onIncrementClick(OrderItem orderItem);
@@ -74,15 +103,17 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
         ImageButton buttonIncrement;
         ImageButton buttonDecrement;
         ImageButton buttonRemove;
+        CheckBox checkBox;
 
         public OrderItemHolder(@NonNull View itemView) {
             super(itemView);
             textViewName = itemView.findViewById(R.id.text_view_order_item_name);
             textViewQuantity = itemView.findViewById(R.id.text_view_order_item_quantity);
             textViewPrice = itemView.findViewById(R.id.text_view_order_item_price);
-            buttonIncrement = itemView.findViewById(R.id.button_increment_quantity);
-            buttonDecrement = itemView.findViewById(R.id.button_decrement_quantity);
-            buttonRemove = itemView.findViewById(R.id.button_remove_item);
+            buttonIncrement = itemView.findViewById(R.id.button_increment);
+            buttonDecrement = itemView.findViewById(R.id.button_decrement);
+            buttonRemove = itemView.findViewById(R.id.button_remove);
+            checkBox = itemView.findViewById(R.id.checkbox_select_item);
         }
     }
 }

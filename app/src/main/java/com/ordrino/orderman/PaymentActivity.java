@@ -67,6 +67,7 @@ public class PaymentActivity extends AppCompatActivity {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
             Log.e(TAG, "Required Intent extras missing for OrderSummaryActivity.");
             finish();
+            return;
         }
 
         // STEP 1: Create PaymentIntent via backend
@@ -108,9 +109,10 @@ public class PaymentActivity extends AppCompatActivity {
                                                                             @Override
                                                                             public void onSuccess(String status, String invoiceUrl, String invoicePdf) {
                                                                                 Log.d(TAG, "Payment captured! Status: " + status);
-                                                                                Toast.makeText(PaymentActivity.this, "Payment completed!", Toast.LENGTH_LONG).show();
+                                                                                runOnUiThread(() -> {
+                                                                                    Toast.makeText(PaymentActivity.this, "Payment completed!", Toast.LENGTH_LONG).show();
+                                                                                });
                                                                                 finalizeOrder();
-                                                                                // Optionally open the invoice
                                                                                 // Optionally open the invoice
                                                                                 Intent qr = new Intent(PaymentActivity.this, InvoiceQRCodeActivity.class);
                                                                                 qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
@@ -122,7 +124,9 @@ public class PaymentActivity extends AppCompatActivity {
                                                                             @Override
                                                                             public void onFailure(Exception e) {
                                                                                 Log.e(TAG, "Capture failed: ", e);
-                                                                                Toast.makeText(PaymentActivity.this, "Capture failed!", Toast.LENGTH_SHORT).show();
+                                                                                runOnUiThread(() -> {
+                                                                                    Toast.makeText(PaymentActivity.this, "Capture failed!", Toast.LENGTH_SHORT).show();
+                                                                                });
                                                                             }
                                                                         });
                                                             }
@@ -130,6 +134,11 @@ public class PaymentActivity extends AppCompatActivity {
                                                             @Override
                                                             public void onFailure(@NotNull TerminalException exception) {
                                                                 Log.e(TAG, "Failed to confirm PaymentIntent: " + exception.getErrorMessage());
+                                                                // Handle payment confirmation failure
+                                                                runOnUiThread(() -> {
+                                                                    Toast.makeText(PaymentActivity.this, "Payment failed: " + exception.getErrorMessage(), Toast.LENGTH_LONG).show();
+                                                                    finish(); // Return to OrderSummaryActivity
+                                                                });
                                                             }
                                                         }
                                                 );
@@ -138,6 +147,11 @@ public class PaymentActivity extends AppCompatActivity {
                                             @Override
                                             public void onFailure(@NotNull TerminalException exception) {
                                                 Log.e(TAG, "Failed to collect payment method: " + exception.getErrorMessage());
+                                                // Handle payment collection failure (most likely a user cancellation)
+                                                runOnUiThread(() -> {
+                                                    Toast.makeText(PaymentActivity.this, "Payment cancelled or failed.", Toast.LENGTH_LONG).show();
+                                                    finish(); // Go back to OrderSummaryActivity
+                                                });
                                             }
                                         },
                                         new CollectConfiguration.Builder()
@@ -148,6 +162,11 @@ public class PaymentActivity extends AppCompatActivity {
                             @Override
                             public void onFailure(@NotNull TerminalException exception) {
                                 Log.e(TAG, "Failed to retrieve PaymentIntent: " + exception.getErrorMessage());
+                                // Handle the initial retrieval failure
+                                runOnUiThread(() -> {
+                                    Toast.makeText(PaymentActivity.this, "Failed to retrieve payment intent.", Toast.LENGTH_LONG).show();
+                                    finish(); // Go back to OrderSummaryActivity
+                                });
                             }
                         }
                 );
@@ -156,10 +175,14 @@ public class PaymentActivity extends AppCompatActivity {
             @Override
             public void onFailure(Exception e) {
                 Log.e(TAG, "Failed to create PaymentIntent via backend", e);
+                // Handle the backend failure
+                runOnUiThread(() -> {
+                    Toast.makeText(PaymentActivity.this, "Failed to prepare payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    finish(); // Go back to OrderSummaryActivity
+                });
             }
         });
     }
-
 
     @Override
     protected void onDestroy() {
