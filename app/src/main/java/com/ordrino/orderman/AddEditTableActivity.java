@@ -22,7 +22,7 @@ public class AddEditTableActivity extends AppCompatActivity {
 
     private EditText editTextNumber;
     private EditText editTextCapacity;
-    private Spinner spinnerSection; // <--- ADD THIS LINE
+    private Spinner spinnerSection;
     private Spinner spinnerStatus;
     private Button buttonSaveTable;
 
@@ -102,7 +102,7 @@ public class AddEditTableActivity extends AppCompatActivity {
         String section = spinnerSection.getSelectedItem().toString();
         String status = spinnerStatus.getSelectedItem().toString();
 
-        if (numberStr.isEmpty() || capacityStr.isEmpty() || section.isEmpty()) { // <--- ADD section check
+        if (numberStr.isEmpty() || capacityStr.isEmpty() || section.isEmpty()) {
             Toast.makeText(this, "Please enter table number, capacity, and section", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -113,7 +113,7 @@ public class AddEditTableActivity extends AppCompatActivity {
         Map<String, Object> tableData = new HashMap<>();
         tableData.put("number", number);
         tableData.put("capacity", capacity);
-        tableData.put("section", section); // <--- INCLUDE SECTION IN THE MAP
+        tableData.put("section", section);
         tableData.put("status", status);
 
         // Retain currentOrderId when updating an existing table, if it exists
@@ -144,7 +144,6 @@ public class AddEditTableActivity extends AppCompatActivity {
             Log.d(TAG, "Attempting to add new table.");
             // When adding, currentOrderId should probably be null initially
             tableData.put("currentOrderId", null); // <--- Explicitly set currentOrderId to null for new tables
-
             tablesRef.add(tableData)
                     .addOnSuccessListener(documentReference -> {
                         Toast.makeText(AddEditTableActivity.this, "Table added", Toast.LENGTH_SHORT).show();

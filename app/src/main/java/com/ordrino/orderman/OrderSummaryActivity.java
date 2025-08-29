@@ -135,6 +135,8 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                                         hideProgressBar();
                                                         Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
                                                         qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                                        qr.putExtra(EXTRA_TABLE_ID, tableId);
+                                                        qr.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
                                                         startActivity(qr);
                                                         Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
                                                         finalizeOrder();
