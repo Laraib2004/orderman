@@ -9,9 +9,10 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View; // Import View
+import android.view.View;
 import android.widget.Button;
-import android.widget.ProgressBar; // Import ProgressBar
+import android.widget.ImageButton;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -104,7 +105,8 @@ public class OrderTakingActivity extends AppCompatActivity
         buttonSendOrder = findViewById(R.id.button_send_order);
         buttonSummaryOrder = findViewById(R.id.button_view_order_summary);
         recyclerViewCategories = findViewById(R.id.recycler_view_categories);
-        progressBarLoading = findViewById(R.id.progress_bar_loading); // Initialize ProgressBar
+        progressBarLoading = findViewById(R.id.progress_bar_loading);
+        ImageButton buttonViewHistory = findViewById(R.id.button_view_history);
 
         if (recyclerViewCategories == null) {
             Log.e(TAG, "onCreate: RecyclerView with ID recycler_view_categories not found in layout.");
@@ -125,6 +127,17 @@ public class OrderTakingActivity extends AppCompatActivity
                 Toast.makeText(this, "No orders to show!", Toast.LENGTH_LONG).show();
             }
 
+        });
+
+        buttonViewHistory.setOnClickListener(v -> {
+            if (restaurantId != null && tableId != null) {
+                Intent historyIntent = new Intent(OrderTakingActivity.this, HistoryReceiptActivity.class);
+                historyIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                historyIntent.putExtra(EXTRA_TABLE_ID, tableId);
+                startActivity(historyIntent);
+            } else {
+                Toast.makeText(this, "Table information is not available.", Toast.LENGTH_SHORT).show();
+            }
         });
 
         String[] categoryArray = getResources().getStringArray(R.array.category_item);

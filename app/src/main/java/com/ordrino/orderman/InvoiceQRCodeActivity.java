@@ -37,15 +37,8 @@ public class InvoiceQRCodeActivity extends AppCompatActivity {
 
         ImageView qrImageView = findViewById(R.id.qrImageView);
 
-        if (getIntent().hasExtra(EXTRA_INVOICE_PDF_URL)
-                && getIntent().hasExtra(EXTRA_TABLE_ID)
-                && getIntent().hasExtra(EXTRA_RESTAURANT_ID)) {
+        if (getIntent().hasExtra(EXTRA_INVOICE_PDF_URL)) {
             invoiceUrl = getIntent().getStringExtra(EXTRA_INVOICE_PDF_URL);
-            tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
-            restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
-
-            // First, add the receipt URL to Firestore
-            addReceiptToHistory(invoiceUrl, tableId, restaurantId);
 
             // Then, generate the QR code
             try {
@@ -56,40 +49,12 @@ public class InvoiceQRCodeActivity extends AppCompatActivity {
                 e.printStackTrace();
                 Toast.makeText(this, "Error generating QR Code", Toast.LENGTH_SHORT).show();
             }
-        } else {
+        }
+        else {
             Toast.makeText(this, "Error: Missing invoice or table information.", Toast.LENGTH_SHORT).show();
             Log.e(TAG, "Intent missing EXTRA_INVOICE_PDF_URL or EXTRA_TABLE_ID.");
             finish();
         }
     }
 
-    private void addReceiptToHistory(String url, String tableId, String restaurantId) {
-        if (tableId == null || tableId.isEmpty()) {
-            Log.e(TAG, "Table ID is missing, cannot add receipt to history.");
-            return;
-        }
-
-        // Create the document reference to the specific table
-        // This implicitly creates the 'historyReceiptToday' subcollection if it doesn't exist.
-        CollectionReference historyRef = db.collection("restaurants")
-                .document(restaurantId)
-                .collection("tables")
-                .document(tableId)
-                .collection("historyReceiptToday");
-
-        // Prepare the data to be stored
-        Map<String, Object> receiptData = new HashMap<>();
-        receiptData.put("url", url);
-        receiptData.put("timestamp", new Date()); // Use a Java Date object for server-side timestamp
-        // You could also add other information like total amount, payment method, etc.
-
-        // Add the new document to the subcollection. Firestore automatically generates a document ID.
-        historyRef.add(receiptData)
-                .addOnSuccessListener(documentReference -> {
-                    Log.d(TAG, "Receipt URL added to history for table " + tableId + " with ID: " + documentReference.getId());
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Error adding receipt to history for table " + tableId, e);
-                });
-    }
 }

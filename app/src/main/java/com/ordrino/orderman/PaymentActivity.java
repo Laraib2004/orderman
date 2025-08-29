@@ -30,6 +30,7 @@ import com.stripe.stripeterminal.external.models.TerminalException;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -116,8 +117,7 @@ public class PaymentActivity extends AppCompatActivity {
                                                                                 // Optionally open the invoice
                                                                                 Intent qr = new Intent(PaymentActivity.this, InvoiceQRCodeActivity.class);
                                                                                 qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
-                                                                                qr.putExtra(EXTRA_TABLE_ID, tableId);
-                                                                                qr.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                                                                                addReceiptToHistory(invoiceUrl, tableId, restaurantId);
                                                                                 startActivity(qr);
                                                                                 setResult(RESULT_OK);
                                                                                 finish();
@@ -202,6 +202,36 @@ public class PaymentActivity extends AppCompatActivity {
                 }
             });
         }
+    }
+
+    private void addReceiptToHistory(String url, String tableId, String restaurantId) {
+        if (tableId == null || tableId.isEmpty()) {
+            Log.e(TAG, "Table ID is missing, cannot add receipt to history.");
+            return;
+        }
+
+        // Create the document reference to the specific table
+        // This implicitly creates the 'historyReceiptToday' subcollection if it doesn't exist.
+        CollectionReference historyRef = db.collection("restaurants")
+                .document(restaurantId)
+                .collection("tables")
+                .document(tableId)
+                .collection("historyReceiptToday");
+
+        // Prepare the data to be stored
+        Map<String, Object> receiptData = new HashMap<>();
+        receiptData.put("url", url);
+        receiptData.put("timestamp", new Date()); // Use a Java Date object for server-side timestamp
+        // You could also add other information like total amount, payment method, etc.
+
+        // Add the new document to the subcollection. Firestore automatically generates a document ID.
+        historyRef.add(receiptData)
+                .addOnSuccessListener(documentReference -> {
+                    Log.d(TAG, "Receipt URL added to history for table " + tableId + " with ID: " + documentReference.getId());
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Error adding receipt to history for table " + tableId, e);
+                });
     }
 
     private void finalizeOrder() {

@@ -30,6 +30,7 @@ import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.WriteBatch;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -135,8 +136,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                                         hideProgressBar();
                                                         Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
                                                         qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
-                                                        qr.putExtra(EXTRA_TABLE_ID, tableId);
-                                                        qr.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                                                        addReceiptToHistory(invoiceUrl, tableId, restaurantId);
                                                         startActivity(qr);
                                                         Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
                                                         finalizeOrder();
@@ -236,6 +236,36 @@ public class OrderSummaryActivity extends AppCompatActivity {
             Log.e(TAG, "Failed to fetch tables for selection: " + e.getMessage(), e);
             Toast.makeText(this, "Error fetching table list.", Toast.LENGTH_SHORT).show();
         });
+    }
+
+    private void addReceiptToHistory(String url, String tableId, String restaurantId) {
+        if (tableId == null || tableId.isEmpty()) {
+            Log.e(TAG, "Table ID is missing, cannot add receipt to history.");
+            return;
+        }
+
+        // Create the document reference to the specific table
+        // This implicitly creates the 'historyReceiptToday' subcollection if it doesn't exist.
+        CollectionReference historyRef = db.collection("restaurants")
+                .document(restaurantId)
+                .collection("tables")
+                .document(tableId)
+                .collection("historyReceiptToday");
+
+        // Prepare the data to be stored
+        Map<String, Object> receiptData = new HashMap<>();
+        receiptData.put("url", url);
+        receiptData.put("timestamp", new Date()); // Use a Java Date object for server-side timestamp
+        // You could also add other information like total amount, payment method, etc.
+
+        // Add the new document to the subcollection. Firestore automatically generates a document ID.
+        historyRef.add(receiptData)
+                .addOnSuccessListener(documentReference -> {
+                    Log.d(TAG, "Receipt URL added to history for table " + tableId + " with ID: " + documentReference.getId());
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Error adding receipt to history for table " + tableId, e);
+                });
     }
 
     private void transferSelectedItems(Map<String, OrderItem> itemsToTransfer, Table destinationTable) {
