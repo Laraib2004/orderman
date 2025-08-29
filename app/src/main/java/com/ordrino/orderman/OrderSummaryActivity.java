@@ -15,6 +15,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -47,7 +48,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private RecyclerView recyclerViewOrderSummary;
     private Button buttonCashPayment;
     private Button buttonCardPayment;
-    private Button buttonTransferTables; // New button
+    private ImageButton buttonTransferTables; // New button
     private ProgressBar progressBar;
 
     private String restaurantId;
