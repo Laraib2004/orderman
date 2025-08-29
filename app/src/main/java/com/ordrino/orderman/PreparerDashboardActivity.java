@@ -27,7 +27,6 @@ public class PreparerDashboardActivity extends AppCompatActivity {
 
         if (getIntent().hasExtra(LoginActivity.EXTRA_RESTAURANT_ID)) {
             restaurantId = getIntent().getStringExtra(LoginActivity.EXTRA_RESTAURANT_ID);
-            // Optional: Toast.makeText(this, "Waiter for Restaurant ID: " + restaurantId, Toast.LENGTH_LONG).show();
         } else {
             Toast.makeText(this, "Error: Restaurant ID not found.", Toast.LENGTH_LONG).show();
             FirebaseAuth.getInstance().signOut();
@@ -37,14 +36,15 @@ public class PreparerDashboardActivity extends AppCompatActivity {
         }
 
         btnViewOrders.setOnClickListener(v -> {
-            // Preparers would go to a screen to view orders assigned to them (food/drinks)
-            // You'd need a dedicated activity for this, e.g., OrderQueueActivity
-            Toast.makeText(PreparerDashboardActivity.this, "View Orders functionality coming soon!", Toast.LENGTH_SHORT).show();
+            // Launch the new OrderQueueActivity
+            Intent intent = new Intent(PreparerDashboardActivity.this, OrderQueueActivity.class);
+            intent.putExtra(LoginActivity.EXTRA_RESTAURANT_ID, restaurantId);
+            startActivity(intent);
         });
 
         btnLogout.setOnClickListener(v -> {
             FirebaseAuth.getInstance().signOut();
-            Intent intent = new Intent(PreparerDashboardActivity.this, LoginActivity.class); // Or a specific WaiterTablesActivity
+            Intent intent = new Intent(PreparerDashboardActivity.this, LoginActivity.class);
             intent.putExtra(LoginActivity.EXTRA_RESTAURANT_ID, restaurantId);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);

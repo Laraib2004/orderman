@@ -27,6 +27,7 @@ import com.google.firebase.firestore.Query;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -302,6 +303,8 @@ public class OrderTakingActivity extends AppCompatActivity
             }
 
             Map<String, Integer> existingQuantitiesMap = new HashMap<>();
+            List<OrderItem> allOrderItemsList = new ArrayList<>();
+
             for (String menuItemId : pendingOrderItems.keySet()) {
                 DocumentReference orderItemDocRef = currentOrderSubcollectionRef.document(menuItemId);
                 DocumentSnapshot orderItemSnapshot = transaction.get(orderItemDocRef);
@@ -342,12 +345,27 @@ public class OrderTakingActivity extends AppCompatActivity
                             "Preparing"
                     );
                     transaction.set(orderItemDocRef, updatedOrderItem);
+                    // Add to the list for the new preparer order
+                    allOrderItemsList.add(updatedOrderItem);
                     Log.d(TAG, "Transaction SET for item " + itemData.getName() + " (ID: " + itemData.getMenuItemId() + ") with NEW TOTAL quantity " + newTotalQuantity);
                 } else {
                     transaction.delete(orderItemDocRef);
                     Log.d(TAG, "Transaction DELETE for item " + itemData.getName() + " (ID: " + itemData.getMenuItemId() + ")");
                 }
             }
+
+            // --- NEW: Add the full order to the preparer queue ---
+            // Create a new Order object from the complete list of items
+            Order newPreparerOrder = new Order();
+            newPreparerOrder.setTableNr(tableNumber);
+            newPreparerOrder.setOrderedItems(allOrderItemsList);
+            newPreparerOrder.setStatus("New");
+            newPreparerOrder.setTimestamp(new Date());
+
+            // Use .add to let Firestore generate a unique ID
+            transaction.set(db.collection("restaurants").document(restaurantId).collection("orderQueue").document(), newPreparerOrder);
+            Log.d(TAG, "Transaction SET for new order in preparer queue.");
+            // --- END NEW ---
 
             Map<String, Object> tableUpdates = new HashMap<>();
             tableUpdates.put("status", "Occupied");

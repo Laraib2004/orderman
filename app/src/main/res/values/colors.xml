@@ -9,7 +9,8 @@
     <color name="white">#FFFFFFFF</color>
     <color name="design_default_color_primary">#6200EE</color>
     <color name="design_default_color_primary_light">#BB86FC</color>
-    <color name="purple_100">#FFE5E0FF</color> <color name="green_500">#FF4CAF50</color>
+    <color name="purple_100">#FFE5E0FF</color>
+    <color name="green_500">#FF4CAF50</color>
     <!-- New colors for table status -->
     <color name="status_available_green">#4CAF50</color> <!-- A vibrant green -->
     <color name="status_occupied_red">#F44336</color>   <!-- A vibrant red -->
