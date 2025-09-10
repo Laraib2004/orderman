@@ -316,7 +316,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         newQuantityForDest,
                         itemToTransfer.getCategory(),
                         itemToTransfer.getType(),
-                        "Preparing" // Status can be set to preparing or kept as is
+                        itemToTransfer.getStatus() // Status can be set to preparing or kept as is
                 );
 
                 transaction.set(destOrderRef.document(itemToTransfer.getId()), updatedItem);

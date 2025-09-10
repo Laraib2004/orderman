@@ -1,5 +1,6 @@
 package com.ordrino.orderman;
 
+import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.ServerTimestamp;
 import java.util.Date;
 import java.util.List;
@@ -8,6 +9,7 @@ public class Order {
 
     private String tableId;
     private int tableNr;
+    private DocumentReference documentReference;
     private List<OrderItem> orderedItems;
     private String status; // e.g., "New", "Preparing", "Ready"
     private @ServerTimestamp Date timestamp;
@@ -55,5 +57,13 @@ public class Order {
 
     public void setTableNr(int tableNr) {
         this.tableNr = tableNr;
+    }
+
+    public DocumentReference getDocumentReference() {
+        return documentReference;
+    }
+
+    public void setDocumentReference(DocumentReference documentReference) {
+        this.documentReference = documentReference;
     }
 }

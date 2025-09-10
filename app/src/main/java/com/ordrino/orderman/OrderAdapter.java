@@ -12,30 +12,47 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
-import com.firebase.ui.firestore.FirestoreRecyclerOptions;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.DocumentReference;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
-public class PreparerOrderAdapter extends FirestoreRecyclerAdapter<Order, PreparerOrderAdapter.PreparerOrderViewHolder> {
+public class OrderAdapter extends RecyclerView.Adapter<OrderAdapter.OrderViewHolder> {
 
-    private static final String TAG = "PreparerOrderAdapter";
+    private static final String TAG = "OrderAdapter";
+    private List<Order> orderList;
     private Context context;
 
-    public PreparerOrderAdapter(@NonNull FirestoreRecyclerOptions<Order> options, Context context) {
-        super(options);
+    // We'll need a way to access the document reference
+    private OnItemClickListener listener;
+
+    public interface OnItemClickListener {
+        void onItemClick(DocumentReference documentReference, String currentStatus);
+    }
+
+    public OrderAdapter(Context context, OnItemClickListener listener) {
+        this.orderList = new ArrayList<>();
         this.context = context;
+        this.listener = listener;
+    }
+
+    @NonNull
+    @Override
+    public OrderViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_preparer_order, parent, false);
+        return new OrderViewHolder(view);
     }
 
     @Override
-    protected void onBindViewHolder(@NonNull PreparerOrderViewHolder holder, int position, @NonNull Order model) {
+    public void onBindViewHolder(@NonNull OrderViewHolder holder, int position) {
+        Order model = orderList.get(position);
+
         // Set Table Number
         holder.tvTableNumber.setText("Table " + model.getTableNr());
 
-        // Build the list of order items from the list within the Order object
+        // Build the list of order items
         StringBuilder itemsList = new StringBuilder();
         if (model.getOrderedItems() != null) {
             for (OrderItem item : model.getOrderedItems()) {
@@ -57,7 +74,7 @@ public class PreparerOrderAdapter extends FirestoreRecyclerAdapter<Order, Prepar
 
         // Set the status and background color
         holder.tvOrderStatus.setText(model.getStatus());
-        int backgroundDrawable = R.drawable.status_new_background; // Default to new
+        int backgroundDrawable = R.drawable.status_new_background;
         int textColor = R.color.white;
         switch (model.getStatus()) {
             case "New":
@@ -78,56 +95,32 @@ public class PreparerOrderAdapter extends FirestoreRecyclerAdapter<Order, Prepar
 
         // Set the click listener to update the status
         holder.itemView.setOnClickListener(v -> {
-            int currentPosition = holder.getBindingAdapterPosition();
-            if (currentPosition != RecyclerView.NO_POSITION) {
-                DocumentSnapshot snapshot = getSnapshots().getSnapshot(currentPosition);
-                // Call the new method to update the status and manually handle the UI change
-                updateOrderStatus(snapshot, model.getStatus(), currentPosition);
+            if (listener != null) {
+                // Pass the document reference and current status to the activity
+                // The activity will handle the Firestore update
+                listener.onItemClick(model.getDocumentReference(), model.getStatus());
             }
         });
     }
 
-    private void updateOrderStatus(DocumentSnapshot snapshot, String currentStatus, int position) {
-        String newStatus;
-        switch (currentStatus) {
-            case "New":
-                newStatus = "Preparing";
-                break;
-            case "Preparing":
-                newStatus = "Ready";
-                break;
-            case "Ready":
-                newStatus = "Served";
-                break;
-            default:
-                Toast.makeText(context, "Order is already served!", Toast.LENGTH_SHORT).show();
-                return;
-        }
-
-        snapshot.getReference().update("status", newStatus)
-                .addOnSuccessListener(aVoid -> {
-                    Log.d(TAG, "DocumentSnapshot successfully updated!");
-                    // Manually notify the adapter that this specific item has changed.
-                    // This is the key to preventing the crash.
-                    notifyItemChanged(position);
-                })
-                .addOnFailureListener(e -> Log.e(TAG, "Error updating document", e));
-    }
-
-    @NonNull
     @Override
-    public PreparerOrderViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_preparer_order, parent, false);
-        return new PreparerOrderViewHolder(view);
+    public int getItemCount() {
+        return orderList.size();
     }
 
-    public static class PreparerOrderViewHolder extends RecyclerView.ViewHolder {
+    public void updateData(List<Order> newOrders) {
+        orderList.clear();
+        orderList.addAll(newOrders);
+        notifyDataSetChanged(); // Tell the adapter that the entire dataset has changed
+    }
+
+    public static class OrderViewHolder extends RecyclerView.ViewHolder {
         TextView tvTableNumber;
         TextView tvOrderStatus;
         TextView tvOrderItems;
         TextView tvOrderTimestamp;
 
-        public PreparerOrderViewHolder(@NonNull View itemView) {
+        public OrderViewHolder(@NonNull View itemView) {
             super(itemView);
             tvTableNumber = itemView.findViewById(R.id.tv_table_number);
             tvOrderStatus = itemView.findViewById(R.id.tv_order_status);
