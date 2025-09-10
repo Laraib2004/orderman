@@ -6,35 +6,45 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-
-import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
-import com.firebase.ui.firestore.FirestoreRecyclerOptions;
-
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
-public class ReceiptAdapter extends FirestoreRecyclerAdapter<Receipt, ReceiptAdapter.ReceiptViewHolder> {
+public class ReceiptAdapter extends RecyclerView.Adapter<ReceiptAdapter.ReceiptViewHolder> {
+
+    private List<Receipt> receiptList;
+    private OnReceiptClickListener listener;
 
     public interface OnReceiptClickListener {
         void onReceiptClick(String receiptUrl);
     }
 
-    private final OnReceiptClickListener listener;
-
-    public ReceiptAdapter(@NonNull FirestoreRecyclerOptions<Receipt> options, OnReceiptClickListener listener) {
-        super(options);
+    public ReceiptAdapter(OnReceiptClickListener listener) {
+        this.receiptList = new ArrayList<>();
         this.listener = listener;
     }
 
+    @NonNull
     @Override
-    protected void onBindViewHolder(@NonNull ReceiptViewHolder holder, int position, @NonNull Receipt model) {
-        // Set the receipt info text (you could use the timestamp or a generated name)
-        holder.textViewInfo.setText("Receipt " + (getItemCount() - position)); // Example: Receipt 1, Receipt 2, etc.
+    public ReceiptViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_receipt, parent, false);
+        return new ReceiptViewHolder(view);
+    }
 
-        // Format the timestamp for a human-readable date and time
-        if (model.getTimestamp() != null) {
-            SimpleDateFormat sdf = new SimpleDateFormat("MMMM d, yyyy h:mm a", Locale.getDefault());
-            String formattedDate = sdf.format(model.getTimestamp());
+    @Override
+    public void onBindViewHolder(@NonNull ReceiptViewHolder holder, int position) {
+        Receipt currentReceipt = receiptList.get(position);
+
+        // Use the correct IDs from your XML to set the text
+        holder.textViewInfo.setText("Receipt " + (getItemCount() - position));
+
+        // Format and set the timestamp
+        Date timestamp = currentReceipt.getTimestamp();
+        if (timestamp != null) {
+            SimpleDateFormat sdf = new SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault());
+            String formattedDate = sdf.format(timestamp);
             holder.textViewDate.setText(formattedDate);
         } else {
             holder.textViewDate.setText("Date N/A");
@@ -43,16 +53,20 @@ public class ReceiptAdapter extends FirestoreRecyclerAdapter<Receipt, ReceiptAda
         // Set the click listener on the entire item view
         holder.itemView.setOnClickListener(v -> {
             if (listener != null) {
-                listener.onReceiptClick(model.getUrl());
+                listener.onReceiptClick(currentReceipt.getUrl());
             }
         });
     }
 
-    @NonNull
     @Override
-    public ReceiptViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_receipt, parent, false);
-        return new ReceiptViewHolder(view);
+    public int getItemCount() {
+        return receiptList.size();
+    }
+
+    public void updateData(List<Receipt> newReceipts) {
+        this.receiptList.clear();
+        this.receiptList.addAll(newReceipts);
+        notifyDataSetChanged();
     }
 
     public static class ReceiptViewHolder extends RecyclerView.ViewHolder {

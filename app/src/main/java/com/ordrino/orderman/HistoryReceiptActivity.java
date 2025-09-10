@@ -7,21 +7,35 @@ import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.Button;
+import android.widget.Toast;
+
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import com.firebase.ui.firestore.FirestoreRecyclerOptions;
+
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+import com.google.firebase.firestore.WriteBatch;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class HistoryReceiptActivity extends AppCompatActivity {
 
     private static final String TAG = "HistoryReceiptActivity";
 
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
+    private CollectionReference receiptsRef;
     private ReceiptAdapter adapter;
+    private ListenerRegistration firestoreListener;
+
     private RecyclerView recyclerView;
+    private Button clearHistoryButton;
 
     private String restaurantId;
     private String tableId;
@@ -33,62 +47,107 @@ public class HistoryReceiptActivity extends AppCompatActivity {
         setTitle("Receipts");
 
         recyclerView = findViewById(R.id.recycler_view_receipts);
-        recyclerView.setHasFixedSize(true);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        clearHistoryButton = findViewById(R.id.btn_clear_history);
 
-        restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
-        tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
-
-        if (restaurantId == null || tableId == null) {
+        if (getIntent().hasExtra(EXTRA_RESTAURANT_ID) && getIntent().hasExtra(EXTRA_TABLE_ID)) {
+            restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
+            tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
+            receiptsRef = db.collection("restaurants").document(restaurantId)
+                    .collection("tables").document(tableId).collection("historyReceiptToday");
+        } else {
             Log.e(TAG, "Restaurant ID or Table ID missing from intent.");
+            Toast.makeText(this, "Error: Restaurant ID or Table ID not found.", Toast.LENGTH_LONG).show();
             finish();
         }
+
+        setupRecyclerView();
+
+        clearHistoryButton.setOnClickListener(v -> showConfirmationDialog());
     }
 
-    private void setUpRecyclerView() {
-        // Reference to the subcollection containing receipt URLs
-        CollectionReference receiptsRef = db.collection("restaurants").document(restaurantId)
-                .collection("tables").document(tableId).collection("historyReceiptToday");
+    // Method to show the confirmation dialog before deleting
+    private void showConfirmationDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Confirm Deletion")
+                .setMessage("This operation should only be done after closing for the day, as it is irreversible. Are you sure you want to clear all receipts for today?")
+                .setPositiveButton("Clear All", (dialog, which) -> {
+                    clearAllReceipts();
+                })
+                .setNegativeButton("Cancel", (dialog, which) -> {
+                    dialog.dismiss();
+                })
+                .show();
+    }
 
-        // Order the receipts by timestamp, newest first
-        Query query = receiptsRef.orderBy("timestamp", Query.Direction.DESCENDING);
-
-        FirestoreRecyclerOptions<Receipt> options = new FirestoreRecyclerOptions.Builder<Receipt>()
-                .setQuery(query, Receipt.class)
-                .build();
-
-        adapter = new ReceiptAdapter(options, this::onReceiptClick);
+    private void setupRecyclerView() {
+        adapter = new ReceiptAdapter(this::onReceiptClick);
+        recyclerView.setHasFixedSize(true);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(adapter);
     }
 
+    private void clearAllReceipts() {
+        // Query for all documents in the collection
+        receiptsRef.get().addOnSuccessListener(queryDocumentSnapshots -> {
+            if (queryDocumentSnapshots.isEmpty()) {
+                Toast.makeText(this, "No receipts to delete.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            WriteBatch batch = db.batch();
+            for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                batch.delete(doc.getReference());
+            }
+
+            batch.commit()
+                    .addOnSuccessListener(aVoid -> {
+                        Log.d(TAG, "Batch delete successful.");
+                        Toast.makeText(this, "All receipts cleared!", Toast.LENGTH_SHORT).show();
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Error performing batch delete.", e);
+                        Toast.makeText(this, "Failed to clear receipts.", Toast.LENGTH_SHORT).show();
+                    });
+        });
+    }
+
     private void onReceiptClick(String receiptUrl) {
-        // When a receipt item is clicked, open the InvoiceQRCodeActivity with the URL
         Intent qrIntent = new Intent(this, InvoiceQRCodeActivity.class);
         qrIntent.putExtra(EXTRA_INVOICE_PDF_URL, receiptUrl);
-        // You may need to pass the table ID too, if InvoiceQRCodeActivity requires it
         startActivity(qrIntent);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        // Re-set up the adapter and start listening every time the activity is visible
-        if (restaurantId != null && tableId != null) {
-            setUpRecyclerView();
-            if (adapter != null) {
-                adapter.startListening();
+        setupFirestoreListener();
+    }
+
+    private void setupFirestoreListener() {
+        Query query = receiptsRef.orderBy("timestamp", Query.Direction.DESCENDING);
+
+        firestoreListener = query.addSnapshotListener((querySnapshot, e) -> {
+            if (e != null) {
+                Log.w(TAG, "Listen failed.", e);
+                return;
             }
-        }
+
+            if (querySnapshot != null) {
+                List<Receipt> newReceipts = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : querySnapshot) {
+                    Receipt receipt = doc.toObject(Receipt.class);
+                    newReceipts.add(receipt);
+                }
+                adapter.updateData(newReceipts);
+            }
+        });
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        if (adapter != null) {
-            adapter.stopListening();
-            // Explicitly detach the adapter to prevent stale views
-            recyclerView.setAdapter(null);
-            adapter = null;
+        if (firestoreListener != null) {
+            firestoreListener.remove();
         }
     }
 }
