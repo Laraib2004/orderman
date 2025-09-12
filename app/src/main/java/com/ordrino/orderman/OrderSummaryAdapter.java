@@ -6,12 +6,11 @@ import android.view.ViewGroup;
 import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.TextView;
-
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
+import com.google.firebase.firestore.DocumentSnapshot;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -21,13 +20,12 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
     private OnItemActionListener listener;
     private Map<String, OrderItem> selectedItems = new HashMap<>();
 
-    public OrderSummaryAdapter() {
-        super(new FirestoreRecyclerOptions.Builder<OrderItem>().build());
-    }
+    // REMOVE THIS CONSTRUCTOR: public OrderSummaryAdapter() { ... }
+    // It's bad practice and can lead to bugs if used.
 
-
-    public OrderSummaryAdapter(@NonNull FirestoreRecyclerOptions<OrderItem> options) {
+    public OrderSummaryAdapter(@NonNull FirestoreRecyclerOptions<OrderItem> options, OnItemActionListener listener) {
         super(options);
+        this.listener = listener;
     }
 
     @Override
@@ -36,28 +34,13 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
         holder.textViewQuantity.setText(String.valueOf(model.getQuantity()));
         holder.textViewPrice.setText(String.format("€%.2f", model.getPrice() * model.getQuantity()));
 
+        // This is good practice. Clear the listener to prevent conflicts.
+        holder.checkBox.setOnCheckedChangeListener(null);
+
+        // Re-set the checkbox state based on the current selected items
         holder.checkBox.setChecked(selectedItems.containsKey(model.getId()));
 
-        holder.buttonIncrement.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onIncrementClick(model);
-            }
-        });
-
-        holder.buttonDecrement.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onDecrementClick(model);
-            }
-        });
-
-        holder.buttonRemove.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onRemoveClick(model);
-            }
-        });
-
-        holder.checkBox.setOnCheckedChangeListener(null); // Clear previous listener
-        holder.checkBox.setChecked(selectedItems.containsKey(model.getId()));
+        // Set the listener again
         holder.checkBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
                 selectedItems.put(model.getId(), model);
@@ -66,6 +49,16 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
             }
         });
 
+        // ... your existing OnClickListener code for buttons
+        holder.buttonIncrement.setOnClickListener(v -> {
+            if (listener != null) listener.onIncrementClick(model);
+        });
+        holder.buttonDecrement.setOnClickListener(v -> {
+            if (listener != null) listener.onDecrementClick(model);
+        });
+        holder.buttonRemove.setOnClickListener(v -> {
+            if (listener != null) listener.onRemoveClick(model);
+        });
     }
 
     @NonNull
@@ -75,6 +68,32 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
         return new OrderItemHolder(view);
     }
 
+    // This is the new, crucial method to add.
+    @Override
+    public void onDataChanged() {
+        super.onDataChanged();
+
+        // Create a new map for the selected items that still exist in the new data set
+        Map<String, OrderItem> updatedSelectedItems = new HashMap<>();
+
+        // Iterate through the current, live data in the adapter
+        for (int i = 0; i < getItemCount(); i++) {
+            DocumentSnapshot snapshot = getSnapshots().getSnapshot(i);
+            String docId = snapshot.getId();
+
+            // If the item was previously selected, and it still exists in the data, add it back.
+            if (selectedItems.containsKey(docId)) {
+                updatedSelectedItems.put(docId, selectedItems.get(docId));
+            }
+        }
+
+        // Update the selectedItems map with the new, clean version
+        selectedItems = updatedSelectedItems;
+
+        // You may also want to notify the activity that the total has changed here
+        // listener.onSelectedItemsChanged(selectedItems);
+    }
+
 
     public Map<String, OrderItem> getSelectedItems() {
         return selectedItems;
@@ -82,7 +101,7 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
 
     public void clearSelectedItems() {
         selectedItems.clear();
-        notifyDataSetChanged();
+        // REMOVE THE LINE: notifyDataSetChanged();
     }
 
     public void setOnItemActionListener(OnItemActionListener listener) {

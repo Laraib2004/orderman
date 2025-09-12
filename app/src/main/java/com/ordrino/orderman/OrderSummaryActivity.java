@@ -49,7 +49,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private RecyclerView recyclerViewOrderSummary;
     private Button buttonCashPayment;
     private Button buttonCardPayment;
-    private ImageButton buttonTransferTables; // New button
+    private ImageButton buttonTransferTables;
     private ProgressBar progressBar;
 
     private String restaurantId;
@@ -67,7 +67,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
         recyclerViewOrderSummary = findViewById(R.id.recycler_view_order_summary);
         buttonCashPayment = findViewById(R.id.button_cash_payment);
         buttonCardPayment = findViewById(R.id.button_card_payment);
-        buttonTransferTables = findViewById(R.id.button_transfer_tables); // Initialize the new button
+        buttonTransferTables = findViewById(R.id.button_transfer_tables);
         progressBar = findViewById(R.id.progress_bar_loading);
 
         if (getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
@@ -88,8 +88,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
             setTitle("Order Summary - Table " + tableNumber);
             updateSummaryTableInfoDisplay();
 
-            setUpOrderSummaryRecyclerView();
-
         } else {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
             Log.e(TAG, "Required Intent extras missing for OrderSummaryActivity.");
@@ -98,12 +96,22 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
         buttonCashPayment.setOnClickListener(v -> {
             Log.d(TAG, "Cash button clicked for Table " + tableNumber);
+            Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
+
+            if (selectedItems.isEmpty()) {
+                Toast.makeText(this, "Please select at least one item to pay for.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
             new AlertDialog.Builder(this)
                     .setTitle("Confirm Cash Payment")
-                    .setMessage("Are you sure you want to mark this order as paid in cash?")
+                    .setMessage("Are you sure you want to mark the selected items as paid in cash?")
                     .setPositiveButton("Yes", (dialog, which) -> {
                         showProgressBar();
                         String description = "Cash payment for Table " + tableNumber;
+
+                        List<OrderItem> selectedItemsList = new ArrayList<>(selectedItems.values());
+
                         restaurantDocRef.get().addOnCompleteListener(task -> {
                             if (task.isSuccessful()) {
                                 DocumentSnapshot document = task.getResult();
@@ -117,44 +125,29 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                     String vatNumber = document.getString("vat_number");
                                     GeoPoint location = document.getGeoPoint("location");
 
-                                    itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
-                                        List<OrderItem> orderItems = new ArrayList<>();
-                                        for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
-                                            OrderItem item = doc.toObject(OrderItem.class);
-                                            if (item != null) {
-                                                item.setId(doc.getId());
-                                                orderItems.add(item);
-                                            }
-                                        }
+                                    CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
+                                    provider.createCashPayment(
+                                            address, city, country, name, province, recipientCode, vatNumber,
+                                            selectedItemsList, description, new CustomConnectionTokenProvider.CreateCashCallback() {
+                                                @Override
+                                                public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
+                                                    hideProgressBar();
+                                                    Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
+                                                    qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                                    addReceiptToHistory(invoiceUrl, tableId, restaurantId);
+                                                    startActivity(qr);
+                                                    Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
 
-                                        CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
-                                        provider.createCashPayment(
-                                                address, city, country, name, province, recipientCode, vatNumber,
-                                                orderItems, description, new CustomConnectionTokenProvider.CreateCashCallback() {
-                                                    @Override
-                                                    public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
-                                                        hideProgressBar();
-                                                        Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
-                                                        qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
-                                                        addReceiptToHistory(invoiceUrl, tableId, restaurantId);
-                                                        startActivity(qr);
-                                                        Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
-                                                        finalizeOrder();
-                                                    }
+                                                    finalizeSelectedItemsPayment(selectedItems);
+                                                }
 
-                                                    @Override
-                                                    public void onFailure(Exception e) {
-                                                        hideProgressBar();
-                                                        Toast.makeText(OrderSummaryActivity.this, "Failed to process cash payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                                                        Log.e(TAG, "Cash payment error", e);
-                                                    }
-                                                });
-
-                                    }).addOnFailureListener(e -> {
-                                        hideProgressBar();
-                                        Toast.makeText(OrderSummaryActivity.this, "Failed to fetch order items: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                                        Log.e(TAG, "Error fetching order items", e);
-                                    });
+                                                @Override
+                                                public void onFailure(Exception e) {
+                                                    hideProgressBar();
+                                                    Toast.makeText(OrderSummaryActivity.this, "Failed to process cash payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                                    Log.e(TAG, "Cash payment error", e);
+                                                }
+                                            });
                                 } else {
                                     Log.d(TAG, "No such document for restaurantId: " + restaurantId);
                                 }
@@ -180,7 +173,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
             finish();
         });
 
-        // Set up the click listener for the new Transfer button
         buttonTransferTables.setOnClickListener(v -> {
             Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
             if (selectedItems.isEmpty()) {
@@ -204,7 +196,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
                 }
             }
 
-            // Exclude the current table from the selection list
             List<Table> destinationTables = new ArrayList<>();
             for (Table table : allTables) {
                 if (!table.getId().equals(tableId)) {
@@ -244,21 +235,16 @@ public class OrderSummaryActivity extends AppCompatActivity {
             return;
         }
 
-        // Create the document reference to the specific table
-        // This implicitly creates the 'historyReceiptToday' subcollection if it doesn't exist.
         CollectionReference historyRef = db.collection("restaurants")
                 .document(restaurantId)
                 .collection("tables")
                 .document(tableId)
                 .collection("historyReceiptToday");
 
-        // Prepare the data to be stored
         Map<String, Object> receiptData = new HashMap<>();
         receiptData.put("url", url);
-        receiptData.put("timestamp", new Date()); // Use a Java Date object for server-side timestamp
-        // You could also add other information like total amount, payment method, etc.
+        receiptData.put("timestamp", new Date());
 
-        // Add the new document to the subcollection. Firestore automatically generates a document ID.
         historyRef.add(receiptData)
                 .addOnSuccessListener(documentReference -> {
                     Log.d(TAG, "Receipt URL added to history for table " + tableId + " with ID: " + documentReference.getId());
@@ -276,7 +262,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
         CollectionReference destOrderRef = destTableDocRef.collection("currentOrder");
 
         db.runTransaction(transaction -> {
-            // Read both table documents and the destination order items first
             DocumentSnapshot sourceTableSnapshot = transaction.get(tableDocRef);
             DocumentSnapshot destTableSnapshot = transaction.get(destTableDocRef);
 
@@ -291,15 +276,12 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
             double transferPrice = 0.0;
 
-            // Perform all writes
             for (Map.Entry<String, OrderItem> entry : itemsToTransfer.entrySet()) {
                 OrderItem itemToTransfer = entry.getValue();
 
-                // 1. Delete item from source table's order
                 DocumentReference sourceItemRef = itemsOrderedRef.document(itemToTransfer.getId());
                 transaction.delete(sourceItemRef);
 
-                // 2. Add or update item in destination table's order
                 DocumentSnapshot destItemSnapshot = destOrderSnapshots.get(itemToTransfer.getId());
                 int newQuantityForDest = itemToTransfer.getQuantity();
 
@@ -316,25 +298,23 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         newQuantityForDest,
                         itemToTransfer.getCategory(),
                         itemToTransfer.getType(),
-                        itemToTransfer.getStatus() // Status can be set to preparing or kept as is
+                        itemToTransfer.getStatus()
                 );
 
                 transaction.set(destOrderRef.document(itemToTransfer.getId()), updatedItem);
 
-                // 3. Update transfer total
                 transferPrice += (itemToTransfer.getQuantity() * itemToTransfer.getPrice());
             }
 
-            // 4. Update total prices on both tables
             sourceTotal -= transferPrice;
             destTotal += transferPrice;
 
             transaction.update(tableDocRef, "totalPrice", sourceTotal);
             transaction.update(destTableDocRef, "totalPrice", destTotal);
-            transaction.update(destTableDocRef, "status", "Occupied"); // Set destination table as occupied
+            transaction.update(destTableDocRef, "status", "Occupied");
 
             if (sourceTotal <= 0.0) {
-                transaction.update(tableDocRef, "status", "Available"); // Free up source table if total is zero
+                transaction.update(tableDocRef, "status", "Available");
             }
 
             return null;
@@ -342,7 +322,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
             hideProgressBar();
             Toast.makeText(this, "Selected items transferred to Table " + destinationTable.getNumber() + "!", Toast.LENGTH_LONG).show();
             Log.d(TAG, "Transfer transaction successful.");
-            orderSummaryAdapter.clearSelectedItems();
+           // orderSummaryAdapter.clearSelectedItems();
         }).addOnFailureListener(e -> {
             hideProgressBar();
             Toast.makeText(this, "Failed to transfer items: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -354,17 +334,21 @@ public class OrderSummaryActivity extends AppCompatActivity {
         textViewSummaryTableInfo.setText("Table: " + tableNumber + " - Total: €" + String.format("%.2f", currentTableTotalPrice));
     }
 
+    // In OrderSummaryActivity.java
+
     private void setUpOrderSummaryRecyclerView() {
+        // If an adapter already exists, stop it before creating a new one
+        if (orderSummaryAdapter != null) {
+            orderSummaryAdapter.stopListening();
+        }
+
         Query query = itemsOrderedRef.orderBy("name", Query.Direction.ASCENDING);
         FirestoreRecyclerOptions<OrderItem> options = new FirestoreRecyclerOptions.Builder<OrderItem>()
                 .setQuery(query, OrderItem.class)
                 .build();
 
-        orderSummaryAdapter = new OrderSummaryAdapter(options);
-        recyclerViewOrderSummary.setLayoutManager(new LinearLayoutManager(this));
-        recyclerViewOrderSummary.setAdapter(orderSummaryAdapter);
-
-        orderSummaryAdapter.setOnItemActionListener(new OrderSummaryAdapter.OnItemActionListener() {
+        // Create the new adapter instance with the listener
+        orderSummaryAdapter = new OrderSummaryAdapter(options, new OrderSummaryAdapter.OnItemActionListener() {
             @Override
             public void onIncrementClick(OrderItem orderItem) {
                 updateOrderItemQuantity(orderItem, 1);
@@ -381,21 +365,11 @@ public class OrderSummaryActivity extends AppCompatActivity {
             }
         });
 
-        tableDocRef.addSnapshotListener((snapshot, e) -> {
-            if (e != null) {
-                Log.w(TAG, "Listen failed.", e);
-                return;
-            }
-            if (snapshot != null && snapshot.exists()) {
-                Table table = snapshot.toObject(Table.class);
-                if (table != null) {
-                    currentTableTotalPrice = table.getTotalPrice();
-                    updateSummaryTableInfoDisplay();
-                }
-            } else {
-                Log.d(TAG, "Current table data: null");
-            }
-        });
+        recyclerViewOrderSummary.setLayoutManager(new LinearLayoutManager(this));
+        recyclerViewOrderSummary.setAdapter(orderSummaryAdapter);
+
+        // We don't need to call startListening() here as it's handled in onStart()
+        // but leaving it here doesn't hurt as long as the adapter is not null when onStart() is called
     }
 
     private void updateOrderItemQuantity(OrderItem orderItem, int change) {
@@ -483,6 +457,63 @@ public class OrderSummaryActivity extends AppCompatActivity {
                 .show();
     }
 
+    private void finalizeSelectedItemsPayment(Map<String, OrderItem> paidItems) {
+        showProgressBar();
+
+        double paidTotal = 0.0;
+        for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
+            paidTotal += entry.getValue().getQuantity() * entry.getValue().getPrice();
+        }
+
+        double finalPaidTotal = paidTotal;
+
+        tableDocRef.get().addOnSuccessListener(tableSnapshot -> {
+            if (tableSnapshot.exists()) {
+                double currentTotal = tableSnapshot.getDouble("totalPrice");
+                double newTotal = currentTotal - finalPaidTotal;
+
+                WriteBatch batch = db.batch();
+
+                for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
+                    DocumentReference itemDocRef = itemsOrderedRef.document(entry.getKey());
+                    batch.delete(itemDocRef);
+                }
+
+                Map<String, Object> tableUpdates = new HashMap<>();
+                tableUpdates.put("totalPrice", newTotal);
+                if (newTotal <= 0.0) {
+                    tableUpdates.put("status", "Available");
+                }
+                batch.update(tableDocRef, tableUpdates);
+
+                batch.commit()
+                        .addOnSuccessListener(aVoid -> {
+                            hideProgressBar();
+                            Toast.makeText(OrderSummaryActivity.this, "Selected items successfully paid for!", Toast.LENGTH_LONG).show();
+                            Log.d(TAG, "Partial payment batch committed successfully.");
+                            // REMOVE THIS LINE: orderSummaryAdapter.clearSelectedItems();
+
+                            if (newTotal <= 0.0) {
+                                finish();
+                            }
+                        })
+                        .addOnFailureListener(e -> {
+                            hideProgressBar();
+                            Toast.makeText(OrderSummaryActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            Log.e(TAG, "Finalize selected items payment batch failed: ", e);
+                        });
+            } else {
+                hideProgressBar();
+                Log.e(TAG, "Table document not found during payment finalization.");
+                Toast.makeText(OrderSummaryActivity.this, "Error: Table data missing.", Toast.LENGTH_LONG).show();
+            }
+        }).addOnFailureListener(e -> {
+            hideProgressBar();
+            Log.e(TAG, "Failed to get table document for payment: " + e.getMessage());
+            Toast.makeText(OrderSummaryActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        });
+    }
+
     private void finalizeOrder() {
         showProgressBar();
         itemsOrderedRef.get()
@@ -519,9 +550,9 @@ public class OrderSummaryActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
+        setUpOrderSummaryRecyclerView();
         if (orderSummaryAdapter != null) {
             orderSummaryAdapter.startListening();
-            Log.d(TAG, "Order summary adapter started listening.");
         }
     }
 
@@ -530,7 +561,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
         super.onStop();
         if (orderSummaryAdapter != null) {
             orderSummaryAdapter.stopListening();
-            Log.d(TAG, "Order summary adapter stopped listening.");
         }
     }
 

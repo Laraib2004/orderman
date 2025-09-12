@@ -25,10 +25,7 @@ public class InvoiceQRCodeActivity extends AppCompatActivity {
 
     private static final String TAG = "InvoiceQRCodeActivity";
     private String invoiceUrl;
-    private String tableId;
-    private String restaurantId;
 
-    private FirebaseFirestore db = FirebaseFirestore.getInstance();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
