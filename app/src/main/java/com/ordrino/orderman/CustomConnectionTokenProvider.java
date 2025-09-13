@@ -117,7 +117,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
 
     // ✅ Method to capture a PaymentIntent
     public void capturePaymentIntent(
-            String restaurantId, String tableId, String paymentIntentId, CaptureIntentCallback callback
+            String restaurantId, String tableId, List<OrderItem> selectedOrderItems, String paymentIntentId, CaptureIntentCallback callback
     ) {
         // Initialize Firestore references
         tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
@@ -138,7 +138,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                             itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
                                 executor.execute(() -> {
                                     try {
-                                        List<OrderItem> orderItems = new ArrayList<>();
+                                        /*List<OrderItem> orderItems = new ArrayList<>();
 
                                         for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
                                             OrderItem item = doc.toObject(OrderItem.class);
@@ -146,7 +146,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                                                 item.setId(doc.getId()); // Ensure ID is set
                                                 orderItems.add(item);
                                             }
-                                        }
+                                        }*/
                                         URL url = new URL("https://ordrino-backend.onrender.com/capture_payment_intent");
 
                                         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -164,9 +164,9 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                                         body.put("recipient_code", recipientCode);
                                         body.put("business_vat", vatNumber);
 
-
                                         JSONArray itemsArray = new JSONArray();
-                                        for (OrderItem item : orderItems) {
+                                        for (OrderItem item : selectedOrderItems) {
+                                            Log.d("SELECTED ITEMS: ", item.getId());
                                             JSONObject itemJson = new JSONObject();
                                             itemJson.put("name", item.getName());
                                             itemJson.put("quantity", item.getQuantity());

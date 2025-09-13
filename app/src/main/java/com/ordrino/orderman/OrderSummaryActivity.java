@@ -5,11 +5,14 @@ import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -38,6 +41,7 @@ import java.util.Map;
 public class OrderSummaryActivity extends AppCompatActivity {
 
     private static final String TAG = "OrderSummaryActivity";
+    public static final String EXTRA_SELECTED_ITEMS = "EXTRA_SELECTED_ITEMS";
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference itemsOrderedRef;
     private DocumentReference tableDocRef;
@@ -57,6 +61,25 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private int tableNumber;
     private double currentTableTotalPrice;
     public static String EXTRA_INVOICE_PDF_URL = "EXTRA_INVOICE_PDF_URL";
+
+    // Your ActivityResultLauncher should be updated to use the finalizeSelectedItemsPayment method.
+// You need to get the selected items from the adapter, but the adapter state might be gone
+// if the activity was recreated. A safer way is to pass the list of selected items
+// to the next activity and get them back.
+// Since that's more complex, for now we will just re-fetch the items to be sure.
+    private ActivityResultLauncher<Intent> cardPaymentLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                hideProgressBar();
+                if (result.getResultCode() == Activity.RESULT_OK) {
+                    // Payment was successful.
+                    // Get the items that were selected for payment before launching the activity.
+                    Map<String, OrderItem> paidItems = orderSummaryAdapter.getSelectedItems();
+                } else {
+                    // Payment was cancelled or failed.
+                    Toast.makeText(this, "Card payment was cancelled or failed.", Toast.LENGTH_SHORT).show();
+                }
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -164,15 +187,29 @@ public class OrderSummaryActivity extends AppCompatActivity {
             showProgressBar();
             Log.d(TAG, "Card button clicked for Table " + tableNumber);
             Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
-            discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
+            // You'll want to pass the total price of all selected items, not the whole table
+            Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
+            if (selectedItems.isEmpty()) {
+                Toast.makeText(this, "Please select at least one item to pay for.", Toast.LENGTH_SHORT).show();
+                hideProgressBar();
+                return;
+            }
+            double totalPriceOfSelectedItems = 0.0;
+            for (OrderItem item : selectedItems.values()) {
+                totalPriceOfSelectedItems += item.getPrice() * item.getQuantity();
+            }
+
+            ArrayList<OrderItem> selectedItemsList = new ArrayList<>(selectedItems.values());
+
+            discoverIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
+            discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, totalPriceOfSelectedItems);
             discoverIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
             discoverIntent.putExtra(EXTRA_TABLE_ID, tableId);
             discoverIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
-            startActivity(discoverIntent);
-            hideProgressBar();
-            finish();
-        });
 
+            // Now, launch the activity using the launcher
+            cardPaymentLauncher.launch(discoverIntent);
+        });
         buttonTransferTables.setOnClickListener(v -> {
             Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
             if (selectedItems.isEmpty()) {

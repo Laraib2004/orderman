@@ -1,8 +1,12 @@
+// File: OrderItem.java
 package com.ordrino.orderman;
+
+import android.os.Parcel;
+import android.os.Parcelable;
 
 import com.google.firebase.firestore.DocumentId;
 
-public class OrderItem {
+public class OrderItem implements  Parcelable {
 
     @DocumentId
     private String id; // This will store the MenuItem's ID (the document ID for the OrderItem)
@@ -15,7 +19,7 @@ public class OrderItem {
     private String status; // e.g., "Preparing", "Sent", "Served"
 
     public OrderItem() {
-        // Required public no-argument constructor for Firestore deserialization
+        // Required empty constructor for Firestore
     }
 
     public OrderItem(String menuItemId, String name, double price, int quantity, String category, String type, String status) {
@@ -28,7 +32,7 @@ public class OrderItem {
         this.status = status;
     }
 
-    // Getters and Setters
+    // Getters and Setters for each field...
     public String getId() {
         return id;
     }
@@ -91,5 +95,45 @@ public class OrderItem {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    // START PARCELABLE IMPLEMENTATION
+
+    protected OrderItem(Parcel in) {
+        id = in.readString();
+        name = in.readString();
+        price = in.readDouble();
+        quantity = in.readInt();
+        category = in.readString();
+        type = in.readString();
+        status = in.readString();
+    }
+
+    public static final Parcelable.Creator<OrderItem> CREATOR = new Parcelable.Creator<OrderItem>() {
+        @Override
+        public OrderItem createFromParcel(Parcel in) {
+            return new OrderItem(in);
+        }
+
+        @Override
+        public OrderItem[] newArray(int size) {
+            return new OrderItem[size];
+        }
+    };
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        dest.writeString(id);
+        dest.writeString(name);
+        dest.writeDouble(price);
+        dest.writeInt(quantity);
+        dest.writeString(category);
+        dest.writeString(type);
+        dest.writeString(status);
     }
 }

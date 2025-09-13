@@ -1,6 +1,7 @@
 package com.ordrino.orderman;
 
 import static com.ordrino.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
+import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SELECTED_ITEMS;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
@@ -36,12 +37,15 @@ import com.stripe.stripeterminal.log.LogLevel;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
+
 public class DiscoverReadersActivity extends AppCompatActivity {
     public static final String TAG = "DISCOVEREADER";
     private Cancelable discoverCancelable;
     private boolean isDiscovering = false;
     private double currentTableTotalPrice;
     private String restaurantId;
+    private ArrayList<OrderItem> selectedItemsList;
     private static final int REQUEST_CODE_LOCATION = 100;
 
     private String tableId;
@@ -60,6 +64,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 result -> {
                     if (result.getResultCode() == Activity.RESULT_OK) {
                         // You came back from ActivityB
+                        setResult(RESULT_OK);
                         finish();
                     }
                     else {
@@ -73,11 +78,13 @@ public class DiscoverReadersActivity extends AppCompatActivity {
         if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE) &&
                 getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
                 getIntent().hasExtra(EXTRA_TABLE_ID) &&
-                getIntent().hasExtra(EXTRA_TABLE_NUMBER)) {
+                getIntent().hasExtra(EXTRA_TABLE_NUMBER) &&
+                getIntent().hasExtra(EXTRA_SELECTED_ITEMS)) {
             currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
             restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
             tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
             tableNumber = getIntent().getIntExtra(EXTRA_TABLE_NUMBER, 0);
+            selectedItemsList = getIntent().getParcelableArrayListExtra(EXTRA_SELECTED_ITEMS);
         }
         else {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
@@ -131,6 +138,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
             paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
             paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
             paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+            paymentIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
             launcher.launch(paymentIntent);
         }
     }
@@ -200,6 +208,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                                         paymentIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
                                         paymentIntent.putExtra(EXTRA_TABLE_ID, tableId);
                                         paymentIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+                                        paymentIntent.putExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
                                         launcher.launch(paymentIntent);
                                     });
                                 }

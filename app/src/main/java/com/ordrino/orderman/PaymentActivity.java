@@ -2,6 +2,7 @@ package com.ordrino.orderman;
 
 import static com.ordrino.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_INVOICE_PDF_URL;
+import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SELECTED_ITEMS;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
@@ -30,6 +31,7 @@ import com.stripe.stripeterminal.external.models.TerminalException;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,6 +41,7 @@ public class PaymentActivity extends AppCompatActivity {
     private static final String TAG = "PaymentActivity";
     private Cancelable collectCancelable;
     private double currentTableTotalPrice;
+    private ArrayList<OrderItem> selectedItemsList;
     private String restaurantId;
     private String tableId;
     private  int tableNumber;
@@ -58,11 +61,13 @@ public class PaymentActivity extends AppCompatActivity {
         if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE) &&
                 getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
                 getIntent().hasExtra(EXTRA_TABLE_ID) &&
-                getIntent().hasExtra(EXTRA_TABLE_NUMBER)) {
+                getIntent().hasExtra(EXTRA_TABLE_NUMBER) &&
+                getIntent().hasExtra(EXTRA_SELECTED_ITEMS)) {
             currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
             restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
             tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
             tableNumber = getIntent().getIntExtra(EXTRA_TABLE_NUMBER, 0);
+            selectedItemsList = getIntent().getParcelableArrayListExtra(EXTRA_SELECTED_ITEMS);
         }
         else {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
@@ -105,6 +110,7 @@ public class PaymentActivity extends AppCompatActivity {
                                                                 // STEP 5: Capture it via backend
                                                                 tokenProvider.capturePaymentIntent(
                                                                         restaurantId, tableId,
+                                                                        selectedItemsList,
                                                                         confirmedIntent.getId(),
                                                                         new CustomConnectionTokenProvider.CaptureIntentCallback() {
                                                                             @Override
@@ -113,7 +119,11 @@ public class PaymentActivity extends AppCompatActivity {
                                                                                 runOnUiThread(() -> {
                                                                                     Toast.makeText(PaymentActivity.this, "Payment completed!", Toast.LENGTH_LONG).show();
                                                                                 });
-                                                                                finalizeOrder();
+                                                                                Map<String, OrderItem> paidItemsMap = new HashMap<>();
+                                                                                for (OrderItem item : selectedItemsList) {
+                                                                                    paidItemsMap.put(item.getId(), item);
+                                                                                }
+                                                                                finalizeSelectedItemsPayment(paidItemsMap);
                                                                                 // Optionally open the invoice
                                                                                 Intent qr = new Intent(PaymentActivity.this, InvoiceQRCodeActivity.class);
                                                                                 qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
@@ -279,5 +289,60 @@ public class PaymentActivity extends AppCompatActivity {
                     Toast.makeText(PaymentActivity.this, "Error fetching order items to finalize: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     Log.e(TAG, "Failed to get current order items for finalization: " + e.getMessage(), e);
                 });
+    }
+
+    private void finalizeSelectedItemsPayment(Map<String, OrderItem> paidItems) {
+
+        tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
+        itemsOrderedRef = tableDocRef.collection("currentOrder");
+
+        double paidTotal = 0.0;
+        for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
+            paidTotal += entry.getValue().getQuantity() * entry.getValue().getPrice();
+        }
+
+        double finalPaidTotal = paidTotal;
+
+        tableDocRef.get().addOnSuccessListener(tableSnapshot -> {
+            if (tableSnapshot.exists()) {
+                double currentTotal = tableSnapshot.getDouble("totalPrice");
+                double newTotal = currentTotal - finalPaidTotal;
+
+                WriteBatch batch = db.batch();
+
+                for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
+                    DocumentReference itemDocRef = itemsOrderedRef.document(entry.getKey());
+                    batch.delete(itemDocRef);
+                }
+
+                Map<String, Object> tableUpdates = new HashMap<>();
+                tableUpdates.put("totalPrice", newTotal);
+                if (newTotal <= 0.0) {
+                    tableUpdates.put("status", "Available");
+                }
+                batch.update(tableDocRef, tableUpdates);
+
+                batch.commit()
+                        .addOnSuccessListener(aVoid -> {
+                            Toast.makeText(PaymentActivity.this, "Selected items successfully paid for!", Toast.LENGTH_LONG).show();
+                            Log.d(TAG, "Partial payment batch committed successfully.");
+                            // REMOVE THIS LINE: orderSummaryAdapter.clearSelectedItems();
+
+                            if (newTotal <= 0.0) {
+                                finish();
+                            }
+                        })
+                        .addOnFailureListener(e -> {
+                            Toast.makeText(PaymentActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            Log.e(TAG, "Finalize selected items payment batch failed: ", e);
+                        });
+            } else {
+                Log.e(TAG, "Table document not found during payment finalization.");
+                Toast.makeText(PaymentActivity.this, "Error: Table data missing.", Toast.LENGTH_LONG).show();
+            }
+        }).addOnFailureListener(e -> {
+            Log.e(TAG, "Failed to get table document for payment: " + e.getMessage());
+            Toast.makeText(PaymentActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        });
     }
 }
