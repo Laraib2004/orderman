@@ -28,6 +28,13 @@
                 android:textSize="24sp"
                 android:textStyle="bold" />
 
+            <CheckBox
+                android:id="@+id/checkbox_select_all"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="Select All" />
+
             <ImageButton
                 android:id="@+id/button_transfer_tables"
                 android:layout_width="48dp"

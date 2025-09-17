@@ -17,15 +17,25 @@ import java.util.Map;
 
 public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, OrderSummaryAdapter.OrderItemHolder> {
 
+    // You can use both listeners if needed, or combine them
+    public interface OnItemActionListener {
+        void onIncrementClick(OrderItem orderItem);
+        void onDecrementClick(OrderItem orderItem);
+        void onRemoveClick(OrderItem orderItem);
+    }
+
+    public interface OnSelectionChangedListener {
+        void onSelectionChanged(int selectedCount, int totalCount);
+    }
+
     private OnItemActionListener listener;
+    private OnSelectionChangedListener selectionListener;
     private Map<String, OrderItem> selectedItems = new HashMap<>();
 
-    // REMOVE THIS CONSTRUCTOR: public OrderSummaryAdapter() { ... }
-    // It's bad practice and can lead to bugs if used.
-
-    public OrderSummaryAdapter(@NonNull FirestoreRecyclerOptions<OrderItem> options, OnItemActionListener listener) {
+    public OrderSummaryAdapter(@NonNull FirestoreRecyclerOptions<OrderItem> options, OnItemActionListener listener, OnSelectionChangedListener selectionListener) {
         super(options);
         this.listener = listener;
+        this.selectionListener = selectionListener;
     }
 
     @Override
@@ -46,6 +56,9 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
                 selectedItems.put(model.getId(), model);
             } else {
                 selectedItems.remove(model.getId());
+            }
+            if (selectionListener != null) {
+                selectionListener.onSelectionChanged(selectedItems.size(), getItemCount());
             }
         });
 
@@ -68,30 +81,23 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
         return new OrderItemHolder(view);
     }
 
-    // This is the new, crucial method to add.
+    // This method is critical for keeping selected items in sync
+    // with database changes
     @Override
     public void onDataChanged() {
         super.onDataChanged();
-
-        // Create a new map for the selected items that still exist in the new data set
         Map<String, OrderItem> updatedSelectedItems = new HashMap<>();
-
-        // Iterate through the current, live data in the adapter
         for (int i = 0; i < getItemCount(); i++) {
             DocumentSnapshot snapshot = getSnapshots().getSnapshot(i);
             String docId = snapshot.getId();
-
-            // If the item was previously selected, and it still exists in the data, add it back.
             if (selectedItems.containsKey(docId)) {
                 updatedSelectedItems.put(docId, selectedItems.get(docId));
             }
         }
-
-        // Update the selectedItems map with the new, clean version
         selectedItems = updatedSelectedItems;
-
-        // You may also want to notify the activity that the total has changed here
-        // listener.onSelectedItemsChanged(selectedItems);
+        if (selectionListener != null) {
+            selectionListener.onSelectionChanged(selectedItems.size(), getItemCount());
+        }
     }
 
 
@@ -99,20 +105,36 @@ public class OrderSummaryAdapter extends FirestoreRecyclerAdapter<OrderItem, Ord
         return selectedItems;
     }
 
+    // This method handles the logic for the "Select All" checkbox
+    public void selectAll(boolean isChecked) {
+        selectedItems.clear(); // First, clear the map
+        if (isChecked) {
+            // If checked, add all items from the current list to the map
+            for (int i = 0; i < getItemCount(); i++) {
+                OrderItem item = getItem(i);
+                selectedItems.put(item.getId(), item);
+            }
+        }
+        // Notify the adapter to refresh all views, updating the checkboxes
+        notifyDataSetChanged();
+        if (selectionListener != null) {
+            selectionListener.onSelectionChanged(selectedItems.size(), getItemCount());
+        }
+    }
+
+    // This is a crucial setter to connect the adapter to the Activity's checkbox
+    public void setOnSelectionChangedListener(OnSelectionChangedListener selectionListener) {
+        this.selectionListener = selectionListener;
+    }
+
+    // --- End of New Methods ---
+
     public void clearSelectedItems() {
         selectedItems.clear();
-        // REMOVE THE LINE: notifyDataSetChanged();
     }
 
     public void setOnItemActionListener(OnItemActionListener listener) {
         this.listener = listener;
-    }
-
-
-    public interface OnItemActionListener {
-        void onIncrementClick(OrderItem orderItem);
-        void onDecrementClick(OrderItem orderItem);
-        void onRemoveClick(OrderItem orderItem);
     }
 
     class OrderItemHolder extends RecyclerView.ViewHolder {

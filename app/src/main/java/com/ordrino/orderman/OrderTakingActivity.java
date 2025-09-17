@@ -185,7 +185,7 @@ public class OrderTakingActivity extends AppCompatActivity
     }
 
     private void updateTableInfoDisplay() {
-        textViewTableInfo.setText("Table: " + tableNumber + " - Status: " + tableStatus + " - Total: €" + String.format("%.2f", temporaryOrderTotal));
+        textViewTableInfo.setText("Table: " + tableNumber + " - Total: €" + String.format("%.2f", temporaryOrderTotal));
     }
 
     private void setUpMenuRecyclerView() {

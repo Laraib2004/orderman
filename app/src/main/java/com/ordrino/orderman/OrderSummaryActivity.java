@@ -19,6 +19,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -55,6 +56,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private Button buttonCashPayment;
     private Button buttonCardPayment;
     private ImageButton buttonTransferTables;
+    private CheckBox checkboxSelectAll;
     private ProgressBar progressBar;
 
     private String restaurantId;
@@ -93,6 +95,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
         buttonCashPayment = findViewById(R.id.button_cash_payment);
         buttonCardPayment = findViewById(R.id.button_card_payment);
         buttonTransferTables = findViewById(R.id.button_transfer_tables);
+        checkboxSelectAll = findViewById(R.id.checkbox_select_all);
         progressBar = findViewById(R.id.progress_bar_loading);
 
         if (getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
@@ -118,6 +121,13 @@ public class OrderSummaryActivity extends AppCompatActivity {
             Log.e(TAG, "Required Intent extras missing for OrderSummaryActivity.");
             finish();
         }
+
+        checkboxSelectAll.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (orderSummaryAdapter != null) {
+                orderSummaryAdapter.selectAll(isChecked);
+            }
+        });
+
 
         buttonCashPayment.setOnClickListener(v -> {
             Log.d(TAG, "Cash button clicked for Table " + tableNumber);
@@ -436,6 +446,29 @@ public class OrderSummaryActivity extends AppCompatActivity {
             public void onRemoveClick(OrderItem orderItem) {
                 removeOrderItem(orderItem);
             }
+        },
+            new OrderSummaryAdapter.OnSelectionChangedListener() {
+                @Override
+                public void onSelectionChanged(int selectedCount, int totalCount) {
+                    // This callback updates the main checkbox based on list selection
+                    boolean allSelected = (totalCount > 0 && selectedCount == totalCount);
+                    boolean isIndeterminate = (selectedCount > 0 && selectedCount < totalCount);
+
+                    checkboxSelectAll.setOnCheckedChangeListener(null); // Remove listener to avoid loop
+                    if (isIndeterminate) {
+                        checkboxSelectAll.setChecked(false); // Set to false to show indeterminate state
+                        // You can add a visual indicator for indeterminate state if needed
+                        // e.g., using a custom drawable
+                    } else {
+                        checkboxSelectAll.setChecked(allSelected);
+                    }
+                    checkboxSelectAll.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                        // Re-add listener after state change
+                        if (orderSummaryAdapter != null) {
+                            orderSummaryAdapter.selectAll(isChecked);
+                        }
+                    });
+                }
         });
 
         recyclerViewOrderSummary.setLayoutManager(new LinearLayoutManager(this));
