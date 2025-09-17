@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.nfc.NfcAdapter;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -60,6 +61,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private String tableId;
     private int tableNumber;
     private double currentTableTotalPrice;
+    private NfcAdapter nfcAdapter;
     public static String EXTRA_INVOICE_PDF_URL = "EXTRA_INVOICE_PDF_URL";
 
     // Your ActivityResultLauncher should be updated to use the finalizeSelectedItemsPayment method.
@@ -185,30 +187,64 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
         buttonCardPayment.setOnClickListener(v -> {
             showProgressBar();
-            Log.d(TAG, "Card button clicked for Table " + tableNumber);
-            Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
-            // You'll want to pass the total price of all selected items, not the whole table
-            Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
-            if (selectedItems.isEmpty()) {
-                Toast.makeText(this, "Please select at least one item to pay for.", Toast.LENGTH_SHORT).show();
+            nfcAdapter = NfcAdapter.getDefaultAdapter(this);
+            if (nfcAdapter == null) {
+                // Device does not support NFC
+                showAlertDialog(
+                        "NFC Not Supported",
+                        "This device does not support NFC. The app may not work correctly.",
+                        false
+                );
                 hideProgressBar();
-                return;
             }
-            double totalPriceOfSelectedItems = 0.0;
-            for (OrderItem item : selectedItems.values()) {
-                totalPriceOfSelectedItems += item.getPrice() * item.getQuantity();
+            else {
+                if (!nfcAdapter.isEnabled()) {
+                    // NFC supported but disabled
+                    new AlertDialog.Builder(this)
+                            .setTitle("Enable NFC")
+                            .setMessage("This app requires NFC to work. Do you want to enable it now?")
+                            .setCancelable(false)
+                            .setPositiveButton("Yes", (dialog, which) -> {
+                                // Open NFC settings
+                                Intent intent = new Intent(android.provider.Settings.ACTION_NFC_SETTINGS);
+                                startActivity(intent);
+                            })
+                            .setNegativeButton("No", (dialog, which) -> {
+                                dialog.dismiss();
+                            })
+                            .show();
+
+                    hideProgressBar();
+                }
+                else  {
+                    Log.d(TAG, "Card button clicked for Table " + tableNumber);
+                    Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
+                    // You'll want to pass the total price of all selected items, not the whole table
+                    Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
+                    if (selectedItems.isEmpty()) {
+                        Toast.makeText(this, "Please select at least one item to pay for.", Toast.LENGTH_SHORT).show();
+                        hideProgressBar();
+                        return;
+                    }
+                    double totalPriceOfSelectedItems = 0.0;
+                    for (OrderItem item : selectedItems.values()) {
+                        totalPriceOfSelectedItems += item.getPrice() * item.getQuantity();
+                    }
+
+                    ArrayList<OrderItem> selectedItemsList = new ArrayList<>(selectedItems.values());
+
+                    discoverIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
+                    discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, totalPriceOfSelectedItems);
+                    discoverIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                    discoverIntent.putExtra(EXTRA_TABLE_ID, tableId);
+                    discoverIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+
+                    // Now, launch the activity using the launcher
+                    cardPaymentLauncher.launch(discoverIntent);
+                }
+
             }
 
-            ArrayList<OrderItem> selectedItemsList = new ArrayList<>(selectedItems.values());
-
-            discoverIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
-            discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, totalPriceOfSelectedItems);
-            discoverIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
-            discoverIntent.putExtra(EXTRA_TABLE_ID, tableId);
-            discoverIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
-
-            // Now, launch the activity using the launcher
-            cardPaymentLauncher.launch(discoverIntent);
         });
         buttonTransferTables.setOnClickListener(v -> {
             Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
@@ -600,6 +636,29 @@ public class OrderSummaryActivity extends AppCompatActivity {
             orderSummaryAdapter.stopListening();
         }
     }
+
+    private void showAlertDialog(String title, String message, boolean openSettings) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title)
+                .setMessage(message)
+                .setCancelable(false)
+                .setPositiveButton("OK", (dialog, which) -> {
+                    if (openSettings) {
+                        // Open NFC settings
+                        Intent intent = new Intent(android.provider.Settings.ACTION_NFC_SETTINGS);
+                        startActivity(intent);
+                    }
+                    dialog.dismiss();
+                });
+
+        if (openSettings) {
+            builder.setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss());
+        }
+
+        AlertDialog alert = builder.create();
+        alert.show();
+    }
+
 
     public void showProgressBar() {
         if (progressBar != null) {
