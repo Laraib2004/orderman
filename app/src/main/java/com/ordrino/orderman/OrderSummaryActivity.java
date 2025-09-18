@@ -71,14 +71,29 @@ public class OrderSummaryActivity extends AppCompatActivity {
 // if the activity was recreated. A safer way is to pass the list of selected items
 // to the next activity and get them back.
 // Since that's more complex, for now we will just re-fetch the items to be sure.
+    // In your OrderSummaryActivity.java
     private ActivityResultLauncher<Intent> cardPaymentLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 hideProgressBar();
                 if (result.getResultCode() == Activity.RESULT_OK) {
                     // Payment was successful.
-                    // Get the items that were selected for payment before launching the activity.
-                    Map<String, OrderItem> paidItems = orderSummaryAdapter.getSelectedItems();
+                    Intent data = result.getData();
+                    if (data != null) {
+                        // Retrieve the list of paid items from the Intent
+                        ArrayList<OrderItem> paidItemsList = data.getParcelableArrayListExtra(EXTRA_SELECTED_ITEMS);
+                        if (paidItemsList != null && !paidItemsList.isEmpty()) {
+                            // Convert the list to a map for the finalize method
+                            Map<String, OrderItem> paidItemsMap = new HashMap<>();
+                            for (OrderItem item : paidItemsList) {
+                                paidItemsMap.put(item.getId(), item);
+                            }
+                            // Call the method to finalize the payment in Firestore and update the UI
+                            finalizeSelectedItemsPayment(paidItemsMap);
+                        } else {
+                            Toast.makeText(this, "Error: No items were returned after payment.", Toast.LENGTH_LONG).show();
+                        }
+                    }
                 } else {
                     // Payment was cancelled or failed.
                     Toast.makeText(this, "Card payment was cancelled or failed.", Toast.LENGTH_SHORT).show();
@@ -520,10 +535,12 @@ public class OrderSummaryActivity extends AppCompatActivity {
             }
             Map<String, Object> tableUpdates = new HashMap<>();
             tableUpdates.put("totalPrice", currentTotal);
+            currentTableTotalPrice = currentTotal;
             transaction.update(tableDocRef, tableUpdates);
             return null;
         }).addOnSuccessListener(aVoid -> {
             Log.d(TAG, "Order item quantity updated successfully.");
+            updateSummaryTableInfoDisplay();
         }).addOnFailureListener(e -> {
             Toast.makeText(OrderSummaryActivity.this, "Error updating item quantity: " + e.getMessage(), Toast.LENGTH_LONG).show();
             Log.e(TAG, "Transaction failed for updating item quantity: " + e.getMessage(), e);
@@ -549,10 +566,12 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         transaction.delete(orderItemDocRef);
                         Map<String, Object> tableUpdates = new HashMap<>();
                         tableUpdates.put("totalPrice", currentTotal);
+                        currentTableTotalPrice = currentTotal;
                         transaction.update(tableDocRef, tableUpdates);
                         return null;
                     }).addOnSuccessListener(aVoid -> {
                         Toast.makeText(OrderSummaryActivity.this, orderItem.getName() + " removed from order.", Toast.LENGTH_SHORT).show();
+                        updateSummaryTableInfoDisplay();
                         Log.d(TAG, "Order item removed successfully.");
                     }).addOnFailureListener(e -> {
                         Toast.makeText(OrderSummaryActivity.this, "Error removing item: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -587,6 +606,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
                 Map<String, Object> tableUpdates = new HashMap<>();
                 tableUpdates.put("totalPrice", newTotal);
+                currentTableTotalPrice = newTotal;
                 if (newTotal <= 0.0) {
                     tableUpdates.put("status", "Available");
                 }
@@ -597,7 +617,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                             hideProgressBar();
                             Toast.makeText(OrderSummaryActivity.this, "Selected items successfully paid for!", Toast.LENGTH_LONG).show();
                             Log.d(TAG, "Partial payment batch committed successfully.");
-                            // REMOVE THIS LINE: orderSummaryAdapter.clearSelectedItems();
+                            updateSummaryTableInfoDisplay();
 
                             if (newTotal <= 0.0) {
                                 finish();

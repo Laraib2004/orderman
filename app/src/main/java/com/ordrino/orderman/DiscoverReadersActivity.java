@@ -63,18 +63,16 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
                     if (result.getResultCode() == Activity.RESULT_OK) {
-                        // You came back from ActivityB
-                        setResult(RESULT_OK);
+                        // Forward the result from PaymentActivity to OrderSummaryActivity
+                        setResult(RESULT_OK, result.getData());
                         finish();
-                    }
-                    else {
-                        // Payment was cancelled or failed. Stay on this screen.
-                        Log.d(TAG, "Payment was cancelled or failed. Remaining on reader discovery screen." + result.getResultCode());
-                        // You could optionally show a toast here, but the payment activity
-                        // already shows one, so it might be redundant.
+                    } else {
+                        // Forward the failure result back up the chain
+                        setResult(RESULT_CANCELED, result.getData());
                         finish();
                     }
                 });
+
         if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE) &&
                 getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
                 getIntent().hasExtra(EXTRA_TABLE_ID) &&

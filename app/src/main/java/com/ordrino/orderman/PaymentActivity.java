@@ -49,8 +49,6 @@ public class PaymentActivity extends AppCompatActivity {
     private CollectionReference itemsOrderedRef; // Reference to the subcollection of ordered items
     private DocumentReference tableDocRef; // Reference to the table document
 
-
-
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -119,17 +117,19 @@ public class PaymentActivity extends AppCompatActivity {
                                                                                 runOnUiThread(() -> {
                                                                                     Toast.makeText(PaymentActivity.this, "Payment completed!", Toast.LENGTH_LONG).show();
                                                                                 });
-                                                                                Map<String, OrderItem> paidItemsMap = new HashMap<>();
-                                                                                for (OrderItem item : selectedItemsList) {
-                                                                                    paidItemsMap.put(item.getId(), item);
-                                                                                }
-                                                                                finalizeSelectedItemsPayment(paidItemsMap);
-                                                                                // Optionally open the invoice
+
+                                                                                // **CRUCIAL CHANGE HERE**
+                                                                                // Instead of finalizing the payment here, send the result back to OrderSummaryActivity.
+                                                                                Intent resultIntent = new Intent();
+                                                                                resultIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
+                                                                                resultIntent.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                                                                setResult(RESULT_OK, resultIntent);
+
+                                                                                // The rest of the logic remains.
+                                                                                addReceiptToHistory(invoiceUrl, tableId, restaurantId);
                                                                                 Intent qr = new Intent(PaymentActivity.this, InvoiceQRCodeActivity.class);
                                                                                 qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
-                                                                                addReceiptToHistory(invoiceUrl, tableId, restaurantId);
                                                                                 startActivity(qr);
-                                                                                setResult(RESULT_OK);
                                                                                 finish();
                                                                             }
 
@@ -138,6 +138,10 @@ public class PaymentActivity extends AppCompatActivity {
                                                                                 Log.e(TAG, "Capture failed: ", e);
                                                                                 runOnUiThread(() -> {
                                                                                     Toast.makeText(PaymentActivity.this, "Capture failed!", Toast.LENGTH_SHORT).show();
+                                                                                    // It's a good practice to still finish the activity even on capture failure
+                                                                                    // so the user doesn't get stuck.
+                                                                                    setResult(RESULT_CANCELED);
+                                                                                    finish();
                                                                                 });
                                                                             }
                                                                         });
@@ -146,10 +150,10 @@ public class PaymentActivity extends AppCompatActivity {
                                                             @Override
                                                             public void onFailure(@NotNull TerminalException exception) {
                                                                 Log.e(TAG, "Failed to confirm PaymentIntent: " + exception.getErrorMessage());
-                                                                // Handle payment confirmation failure
                                                                 runOnUiThread(() -> {
                                                                     Toast.makeText(PaymentActivity.this, "Payment failed: " + exception.getErrorMessage(), Toast.LENGTH_LONG).show();
-                                                                    finish(); // Return to OrderSummaryActivity
+                                                                    setResult(RESULT_CANCELED);
+                                                                    finish();
                                                                 });
                                                             }
                                                         }
@@ -159,10 +163,10 @@ public class PaymentActivity extends AppCompatActivity {
                                             @Override
                                             public void onFailure(@NotNull TerminalException exception) {
                                                 Log.e(TAG, "Failed to collect payment method: " + exception.getErrorMessage());
-                                                // Handle payment collection failure (most likely a user cancellation)
                                                 runOnUiThread(() -> {
                                                     Toast.makeText(PaymentActivity.this, "Payment cancelled or failed.", Toast.LENGTH_LONG).show();
-                                                    finish(); // Go back to OrderSummaryActivity
+                                                    setResult(RESULT_CANCELED);
+                                                    finish();
                                                 });
                                             }
                                         },
@@ -174,10 +178,10 @@ public class PaymentActivity extends AppCompatActivity {
                             @Override
                             public void onFailure(@NotNull TerminalException exception) {
                                 Log.e(TAG, "Failed to retrieve PaymentIntent: " + exception.getErrorMessage());
-                                // Handle the initial retrieval failure
                                 runOnUiThread(() -> {
                                     Toast.makeText(PaymentActivity.this, "Failed to retrieve payment intent.", Toast.LENGTH_LONG).show();
-                                    finish(); // Go back to OrderSummaryActivity
+                                    setResult(RESULT_CANCELED);
+                                    finish();
                                 });
                             }
                         }
@@ -187,10 +191,10 @@ public class PaymentActivity extends AppCompatActivity {
             @Override
             public void onFailure(Exception e) {
                 Log.e(TAG, "Failed to create PaymentIntent via backend", e);
-                // Handle the backend failure
                 runOnUiThread(() -> {
                     Toast.makeText(PaymentActivity.this, "Failed to prepare payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    finish(); // Go back to OrderSummaryActivity
+                    setResult(RESULT_CANCELED);
+                    finish();
                 });
             }
         });
@@ -214,27 +218,23 @@ public class PaymentActivity extends AppCompatActivity {
         }
     }
 
+    // Keep the addReceiptToHistory method here as it's a direct consequence of a successful payment.
     private void addReceiptToHistory(String url, String tableId, String restaurantId) {
         if (tableId == null || tableId.isEmpty()) {
             Log.e(TAG, "Table ID is missing, cannot add receipt to history.");
             return;
         }
 
-        // Create the document reference to the specific table
-        // This implicitly creates the 'historyReceiptToday' subcollection if it doesn't exist.
         CollectionReference historyRef = db.collection("restaurants")
                 .document(restaurantId)
                 .collection("tables")
                 .document(tableId)
                 .collection("historyReceiptToday");
 
-        // Prepare the data to be stored
         Map<String, Object> receiptData = new HashMap<>();
         receiptData.put("url", url);
-        receiptData.put("timestamp", new Date()); // Use a Java Date object for server-side timestamp
-        // You could also add other information like total amount, payment method, etc.
+        receiptData.put("timestamp", new Date());
 
-        // Add the new document to the subcollection. Firestore automatically generates a document ID.
         historyRef.add(receiptData)
                 .addOnSuccessListener(documentReference -> {
                     Log.d(TAG, "Receipt URL added to history for table " + tableId + " with ID: " + documentReference.getId());
@@ -242,107 +242,5 @@ public class PaymentActivity extends AppCompatActivity {
                 .addOnFailureListener(e -> {
                     Log.e(TAG, "Error adding receipt to history for table " + tableId, e);
                 });
-    }
-
-    private void finalizeOrder() {
-        // Fetch all documents in the 'currentOrder' subcollection
-        tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
-        itemsOrderedRef = tableDocRef.collection("currentOrder");
-        itemsOrderedRef.get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    WriteBatch batch = db.batch(); // Create a new batch for atomic operations
-
-                    // 1. Delete all documents in the currentOrder subcollection
-                    for (DocumentSnapshot doc : queryDocumentSnapshots.getDocuments()) {
-                        batch.delete(doc.getReference());
-                        Log.d(TAG, "Adding delete operation for order item: " + doc.getId());
-                    }
-
-                    // 2. Update the table document: status to "Available", totalPrice to 0.0
-                    Map<String, Object> tableUpdates = new HashMap<>();
-                    tableUpdates.put("status", "Available");
-                    tableUpdates.put("totalPrice", 0.0);
-                    batch.update(tableDocRef, tableUpdates);
-                    Log.d(TAG, "Adding update operation for table " + tableId + ": status=Available, totalPrice=0.0");
-
-                    // Commit the batch writes
-                    batch.commit()
-                            .addOnSuccessListener(aVoid -> {
-                                Toast.makeText(PaymentActivity.this, "Order finalized for Table " + tableNumber + ". Table now Available.", Toast.LENGTH_LONG).show();
-                                Log.d(TAG, "Batch commit successful. Order cleared and table status updated.");
-
-                                // After successful finalization, navigate back.
-                                // If OrderTakingActivity is still in the backstack, its snapshot listener will
-                                // automatically update the UI as soon as it comes to foreground.
-                                // Finishing this activity will take user back to OrderTakingActivity,
-                                // which will then update its TextView. If you want to go straight to TablesActivity,
-                                // you might need to use FLAG_ACTIVITY_CLEAR_TOP.
-                                finish(); // Finish OrderSummaryActivity
-
-                            })
-                            .addOnFailureListener(e -> {
-                                Toast.makeText(PaymentActivity.this, "Error finalizing order: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                                Log.e(TAG, "Failed to commit batch operations for order finalization: " + e.getMessage(), e);
-                            });
-                })
-                .addOnFailureListener(e -> {
-                    Toast.makeText(PaymentActivity.this, "Error fetching order items to finalize: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    Log.e(TAG, "Failed to get current order items for finalization: " + e.getMessage(), e);
-                });
-    }
-
-    private void finalizeSelectedItemsPayment(Map<String, OrderItem> paidItems) {
-
-        tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
-        itemsOrderedRef = tableDocRef.collection("currentOrder");
-
-        double paidTotal = 0.0;
-        for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
-            paidTotal += entry.getValue().getQuantity() * entry.getValue().getPrice();
-        }
-
-        double finalPaidTotal = paidTotal;
-
-        tableDocRef.get().addOnSuccessListener(tableSnapshot -> {
-            if (tableSnapshot.exists()) {
-                double currentTotal = tableSnapshot.getDouble("totalPrice");
-                double newTotal = currentTotal - finalPaidTotal;
-
-                WriteBatch batch = db.batch();
-
-                for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
-                    DocumentReference itemDocRef = itemsOrderedRef.document(entry.getKey());
-                    batch.delete(itemDocRef);
-                }
-
-                Map<String, Object> tableUpdates = new HashMap<>();
-                tableUpdates.put("totalPrice", newTotal);
-                if (newTotal <= 0.0) {
-                    tableUpdates.put("status", "Available");
-                }
-                batch.update(tableDocRef, tableUpdates);
-
-                batch.commit()
-                        .addOnSuccessListener(aVoid -> {
-                            Toast.makeText(PaymentActivity.this, "Selected items successfully paid for!", Toast.LENGTH_LONG).show();
-                            Log.d(TAG, "Partial payment batch committed successfully.");
-                            // REMOVE THIS LINE: orderSummaryAdapter.clearSelectedItems();
-
-                            if (newTotal <= 0.0) {
-                                finish();
-                            }
-                        })
-                        .addOnFailureListener(e -> {
-                            Toast.makeText(PaymentActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                            Log.e(TAG, "Finalize selected items payment batch failed: ", e);
-                        });
-            } else {
-                Log.e(TAG, "Table document not found during payment finalization.");
-                Toast.makeText(PaymentActivity.this, "Error: Table data missing.", Toast.LENGTH_LONG).show();
-            }
-        }).addOnFailureListener(e -> {
-            Log.e(TAG, "Failed to get table document for payment: " + e.getMessage());
-            Toast.makeText(PaymentActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        });
     }
 }
