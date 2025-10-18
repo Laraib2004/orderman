@@ -306,6 +306,8 @@ public class OrderSummaryActivity extends AppCompatActivity {
             //    that showTableSelectionDialog and transferSelectedItems expect.
             Map<String, OrderItem> itemsToTransferMap = new HashMap<>();
 
+            double totalToTransfer = 0;
+
             // Iterate through the adapter's items to retrieve the full OrderItem details
             for (int i = 0; i < orderSummaryAdapter.getItemCount(); i++) {
                 OrderItem originalItem = orderSummaryAdapter.getItem(i);
@@ -324,12 +326,15 @@ public class OrderSummaryActivity extends AppCompatActivity {
                             originalItem.getType(),
                             originalItem.getStatus()
                     );
+                    transferItem.setId(originalItem.getId());
+                    totalToTransfer += (transferItem.getPrice() * transferQuantity);
                     itemsToTransferMap.put(itemId, transferItem);
                 }
             }
 
             // 3. Launch the transfer process with the newly constructed map
             showTableSelectionDialog(itemsToTransferMap);
+            currentTableTotalPrice -= totalToTransfer;
         });
     }
 
@@ -390,6 +395,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         Table selectedTable = destinationTables.get(which);
                         dialog.dismiss();
                         transferSelectedItems(itemsToTransfer, selectedTable);
+                        updateSummaryTableInfoDisplay();
                     })
                     .setNegativeButton("Cancel", null)
                     .show();
@@ -433,13 +439,24 @@ public class OrderSummaryActivity extends AppCompatActivity {
         CollectionReference destOrderRef = destTableDocRef.collection("currentOrder");
 
         db.runTransaction(transaction -> {
+
+            // --- PHASE 1: READS ---
+
             DocumentSnapshot sourceTableSnapshot = transaction.get(tableDocRef);
             DocumentSnapshot destTableSnapshot = transaction.get(destTableDocRef);
 
+            // 1. Read all destination items for merging
             Map<String, DocumentSnapshot> destOrderSnapshots = new HashMap<>();
             for(String itemId : itemsToTransfer.keySet()){
                 DocumentReference destItemRef = destOrderRef.document(itemId);
                 destOrderSnapshots.put(itemId, transaction.get(destItemRef));
+            }
+
+            // 2. Read all SOURCE items for updating/deleting
+            Map<String, DocumentSnapshot> sourceOrderSnapshots = new HashMap<>();
+            for(String itemId : itemsToTransfer.keySet()){
+                DocumentReference sourceItemRef = itemsOrderedRef.document(itemId);
+                sourceOrderSnapshots.put(itemId, transaction.get(sourceItemRef));
             }
 
             double sourceTotal = sourceTableSnapshot.exists() ? sourceTableSnapshot.getDouble("totalPrice") : 0.0;
@@ -447,23 +464,44 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
             double transferPrice = 0.0;
 
+            // --- PHASE 2: CALCULATIONS AND WRITES ---
+
             for (Map.Entry<String, OrderItem> entry : itemsToTransfer.entrySet()) {
                 OrderItem itemToTransfer = entry.getValue();
+                String itemId = itemToTransfer.getId();
+                int transferQuantity = itemToTransfer.getQuantity(); // e.g., 1x Pommes
 
-                DocumentReference sourceItemRef = itemsOrderedRef.document(itemToTransfer.getId());
-                transaction.delete(sourceItemRef);
+                // --- A. SOURCE TABLE UPDATE ---
+                DocumentReference sourceItemRef = itemsOrderedRef.document(itemId);
+                DocumentSnapshot sourceItemSnapshot = sourceOrderSnapshots.get(itemId);
 
-                DocumentSnapshot destItemSnapshot = destOrderSnapshots.get(itemToTransfer.getId());
-                int newQuantityForDest = itemToTransfer.getQuantity();
+                if (sourceItemSnapshot != null && sourceItemSnapshot.exists()) {
+                    OrderItem existingSourceItem = sourceItemSnapshot.toObject(OrderItem.class);
+                    int originalSourceQuantity = existingSourceItem.getQuantity(); // e.g., 7x Pommes
+                    int remainingSourceQuantity = originalSourceQuantity - transferQuantity; // 7 - 1 = 6
+
+                    if (remainingSourceQuantity > 0) {
+                        // PARTIAL TRANSFER: Update the source item's quantity
+                        transaction.update(sourceItemRef, "quantity", remainingSourceQuantity);
+                    } else {
+                        // FULL TRANSFER: Delete the source item
+                        transaction.delete(sourceItemRef);
+                    }
+                }
+
+                // --- B. DESTINATION TABLE UPDATE ---
+
+                DocumentSnapshot destItemSnapshot = destOrderSnapshots.get(itemId);
+                int newQuantityForDest = transferQuantity; // Start with the quantity being transferred
 
                 if (destItemSnapshot != null && destItemSnapshot.exists()) {
                     OrderItem existingDestItem = destItemSnapshot.toObject(OrderItem.class);
-                    newQuantityForDest += existingDestItem.getQuantity();
-
+                    newQuantityForDest += existingDestItem.getQuantity(); // Add to existing destination quantity
                 }
 
+                // Write the new item or updated item to the destination
                 OrderItem updatedItem = new OrderItem(
-                        itemToTransfer.getId(),
+                        itemId,
                         itemToTransfer.getName(),
                         itemToTransfer.getPrice(),
                         newQuantityForDest,
@@ -472,14 +510,16 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         itemToTransfer.getStatus()
                 );
 
-                transaction.set(destOrderRef.document(itemToTransfer.getId()), updatedItem);
+                transaction.set(destOrderRef.document(itemId), updatedItem);
 
-                transferPrice += (itemToTransfer.getQuantity() * itemToTransfer.getPrice());
+                // --- C. TOTAL PRICE UPDATE ---
+                transferPrice += (transferQuantity * itemToTransfer.getPrice());
             }
 
             sourceTotal -= transferPrice;
             destTotal += transferPrice;
 
+            // --- D. TABLE TOTALS UPDATE ---
             transaction.update(tableDocRef, "totalPrice", sourceTotal);
             transaction.update(destTableDocRef, "totalPrice", destTotal);
             transaction.update(destTableDocRef, "status", "Occupied");
@@ -493,7 +533,9 @@ public class OrderSummaryActivity extends AppCompatActivity {
             hideProgressBar();
             Toast.makeText(this, "Selected items transferred to Table " + destinationTable.getNumber() + "!", Toast.LENGTH_LONG).show();
             Log.d(TAG, "Transfer transaction successful.");
-           // orderSummaryAdapter.clearSelectedItems();
+            // Clear the selection after successful transfer
+            orderSummaryAdapter.getItemsToPay().clear();
+            orderSummaryAdapter.notifyDataSetChanged();
         }).addOnFailureListener(e -> {
             hideProgressBar();
             Toast.makeText(this, "Failed to transfer items: " + e.getMessage(), Toast.LENGTH_LONG).show();
