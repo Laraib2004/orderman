@@ -19,7 +19,6 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -56,7 +55,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private Button buttonCashPayment;
     private Button buttonCardPayment;
     private ImageButton buttonTransferTables;
-    private CheckBox checkboxSelectAll;
     private ProgressBar progressBar;
 
     private String restaurantId;
@@ -72,6 +70,8 @@ public class OrderSummaryActivity extends AppCompatActivity {
 // to the next activity and get them back.
 // Since that's more complex, for now we will just re-fetch the items to be sure.
     // In your OrderSummaryActivity.java
+    // OrderSummaryActivity.java
+
     private ActivityResultLauncher<Intent> cardPaymentLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -83,13 +83,17 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         // Retrieve the list of paid items from the Intent
                         ArrayList<OrderItem> paidItemsList = data.getParcelableArrayListExtra(EXTRA_SELECTED_ITEMS);
                         if (paidItemsList != null && !paidItemsList.isEmpty()) {
-                            // Convert the list to a map for the finalize method
-                            Map<String, OrderItem> paidItemsMap = new HashMap<>();
+
+                            // *** CONVERT the returned OrderItem list into the final QUANTITY map ***
+                            Map<String, Integer> itemsToFinalizeQuantities = new HashMap<>();
                             for (OrderItem item : paidItemsList) {
-                                paidItemsMap.put(item.getId(), item);
+                                // Map: Item ID -> Quantity Paid
+                                itemsToFinalizeQuantities.put(item.getId(), item.getQuantity());
                             }
-                            // Call the method to finalize the payment in Firestore and update the UI
-                            finalizeSelectedItemsPayment(paidItemsMap);
+
+                            // *** CALL THE UPDATED FINALIZATION METHOD ***
+                            finalizeSelectedItemsPayment(itemsToFinalizeQuantities);
+
                         } else {
                             Toast.makeText(this, "Error: No items were returned after payment.", Toast.LENGTH_LONG).show();
                         }
@@ -110,7 +114,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
         buttonCashPayment = findViewById(R.id.button_cash_payment);
         buttonCardPayment = findViewById(R.id.button_card_payment);
         buttonTransferTables = findViewById(R.id.button_transfer_tables);
-        checkboxSelectAll = findViewById(R.id.checkbox_select_all);
         progressBar = findViewById(R.id.progress_bar_loading);
 
         if (getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
@@ -137,19 +140,13 @@ public class OrderSummaryActivity extends AppCompatActivity {
             finish();
         }
 
-        checkboxSelectAll.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (orderSummaryAdapter != null) {
-                orderSummaryAdapter.selectAll(isChecked);
-            }
-        });
-
 
         buttonCashPayment.setOnClickListener(v -> {
             Log.d(TAG, "Cash button clicked for Table " + tableNumber);
-            Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
+            Map<String, Integer> itemsToPayQuantities = orderSummaryAdapter.getItemsToPay();
 
-            if (selectedItems.isEmpty()) {
-                Toast.makeText(this, "Please select at least one item to pay for.", Toast.LENGTH_SHORT).show();
+            if (itemsToPayQuantities.isEmpty()) {
+                Toast.makeText(this, "Please select at least one unit to pay for.", Toast.LENGTH_SHORT).show();
                 return;
             }
 
@@ -160,7 +157,8 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         showProgressBar();
                         String description = "Cash payment for Table " + tableNumber;
 
-                        List<OrderItem> selectedItemsList = new ArrayList<>(selectedItems.values());
+                        // 2. CONVERT the quantity map back into a list of OrderItems for the provider/API
+                        List<OrderItem> selectedItemsList = createOrderItemListFromSelection(itemsToPayQuantities);
 
                         restaurantDocRef.get().addOnCompleteListener(task -> {
                             if (task.isSuccessful()) {
@@ -188,7 +186,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                                     startActivity(qr);
                                                     Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
 
-                                                    finalizeSelectedItemsPayment(selectedItems);
+                                                    finalizeSelectedItemsPayment(itemsToPayQuantities);
                                                 }
 
                                                 @Override
@@ -245,18 +243,40 @@ public class OrderSummaryActivity extends AppCompatActivity {
                     Log.d(TAG, "Card button clicked for Table " + tableNumber);
                     Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
                     // You'll want to pass the total price of all selected items, not the whole table
-                    Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
-                    if (selectedItems.isEmpty()) {
-                        Toast.makeText(this, "Please select at least one item to pay for.", Toast.LENGTH_SHORT).show();
+                    Map<String, Integer> itemsToPayQuantities = orderSummaryAdapter.getItemsToPay();
+                    if (itemsToPayQuantities.isEmpty()) {
+                        Toast.makeText(this, "Please select at least one unit to pay for.", Toast.LENGTH_SHORT).show();
                         hideProgressBar();
                         return;
                     }
+                    // *** 2. BUILD LIST AND CALCULATE TOTAL PRICE BASED ON SELECTED QUANTITIES ***
                     double totalPriceOfSelectedItems = 0.0;
-                    for (OrderItem item : selectedItems.values()) {
-                        totalPriceOfSelectedItems += item.getPrice() * item.getQuantity();
+                    ArrayList<OrderItem> selectedItemsList = new ArrayList<>();
+                    // Iterate through adapter items to find selected ones and build the list
+                    for (int i = 0; i < orderSummaryAdapter.getItemCount(); i++) {
+                        OrderItem originalItem = orderSummaryAdapter.getItem(i);
+                        String itemId = originalItem.getId();
+
+                        if (itemsToPayQuantities.containsKey(itemId)) {
+                            int selectedQuantity = itemsToPayQuantities.get(itemId);
+
+                            totalPriceOfSelectedItems += originalItem.getPrice() * selectedQuantity;
+
+                            // Create a new OrderItem object representing *only* the quantity being paid
+                            OrderItem paidItem = new OrderItem(
+                                    itemId,
+                                    originalItem.getName(),
+                                    originalItem.getPrice(),
+                                    selectedQuantity, // Use the selected quantity
+                                    originalItem.getCategory(),
+                                    originalItem.getType(),
+                                    originalItem.getStatus()
+                            );
+                            paidItem.setId(originalItem.getId());
+                            selectedItemsList.add(paidItem);
+                        }
                     }
 
-                    ArrayList<OrderItem> selectedItemsList = new ArrayList<>(selectedItems.values());
 
                     discoverIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
                     discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, totalPriceOfSelectedItems);
@@ -271,14 +291,67 @@ public class OrderSummaryActivity extends AppCompatActivity {
             }
 
         });
+        // OrderSummaryActivity.java
+
         buttonTransferTables.setOnClickListener(v -> {
-            Map<String, OrderItem> selectedItems = orderSummaryAdapter.getSelectedItems();
-            if (selectedItems.isEmpty()) {
-                Toast.makeText(this, "Please select at least one item to transfer.", Toast.LENGTH_SHORT).show();
+            // 1. Get the new quantity-based selection map
+            Map<String, Integer> itemsToTransferQuantities = orderSummaryAdapter.getItemsToPay();
+
+            if (itemsToTransferQuantities.isEmpty()) {
+                Toast.makeText(this, "Please select at least one unit to transfer.", Toast.LENGTH_SHORT).show();
                 return;
             }
-            showTableSelectionDialog(selectedItems);
+
+            // 2. Convert the quantity map into the Map<String, OrderItem> structure
+            //    that showTableSelectionDialog and transferSelectedItems expect.
+            Map<String, OrderItem> itemsToTransferMap = new HashMap<>();
+
+            // Iterate through the adapter's items to retrieve the full OrderItem details
+            for (int i = 0; i < orderSummaryAdapter.getItemCount(); i++) {
+                OrderItem originalItem = orderSummaryAdapter.getItem(i);
+                String itemId = originalItem.getId();
+
+                if (itemsToTransferQuantities.containsKey(itemId)) {
+                    int transferQuantity = itemsToTransferQuantities.get(itemId);
+
+                    // Create a new OrderItem representing *only* the quantity being transferred
+                    OrderItem transferItem = new OrderItem(
+                            itemId,
+                            originalItem.getName(),
+                            originalItem.getPrice(),
+                            transferQuantity, // Use the selected quantity
+                            originalItem.getCategory(),
+                            originalItem.getType(),
+                            originalItem.getStatus()
+                    );
+                    itemsToTransferMap.put(itemId, transferItem);
+                }
+            }
+
+            // 3. Launch the transfer process with the newly constructed map
+            showTableSelectionDialog(itemsToTransferMap);
         });
+    }
+
+    // Create this helper method in OrderSummaryActivity.java
+    private List<OrderItem> createOrderItemListFromSelection(Map<String, Integer> itemsToPayQuantities) {
+        List<OrderItem> list = new ArrayList<>();
+        for (int i = 0; i < orderSummaryAdapter.getItemCount(); i++) {
+            OrderItem originalItem = orderSummaryAdapter.getItem(i);
+            String itemId = originalItem.getId();
+
+            if (itemsToPayQuantities.containsKey(itemId)) {
+                int selectedQuantity = itemsToPayQuantities.get(itemId);
+
+                // Create a new OrderItem object representing *only* the quantity being paid
+                OrderItem paidItem = new OrderItem(
+                        itemId, originalItem.getName(), originalItem.getPrice(), selectedQuantity,
+                        originalItem.getCategory(), originalItem.getType(), originalItem.getStatus()
+                );
+                list.add(paidItem);
+            }
+        }
+        return list;
     }
 
     private void showTableSelectionDialog(Map<String, OrderItem> itemsToTransfer) {
@@ -461,28 +534,34 @@ public class OrderSummaryActivity extends AppCompatActivity {
             public void onRemoveClick(OrderItem orderItem) {
                 removeOrderItem(orderItem);
             }
+
+            @Override
+            public void onSelectionChange(OrderItem orderItem, int delta) {
+                // 1. Get the current quantity selected for payment
+                Map<String, Integer> itemsToPay = orderSummaryAdapter.getItemsToPay();
+                int currentSelected = itemsToPay.getOrDefault(orderItem.getId(), 0);
+                int newSelected = currentSelected + delta;
+
+                // 2. Validate against the total quantity
+                if (newSelected >= 0 && newSelected <= orderItem.getQuantity()) {
+                    if (newSelected == 0) {
+                        itemsToPay.remove(orderItem.getId());
+                    } else {
+                        itemsToPay.put(orderItem.getId(), newSelected);
+                    }
+                    // Notify the adapter to refresh the view where the selection count changed
+                    orderSummaryAdapter.notifyDataSetChanged();
+
+                    // Optionally, update the header total price here
+                    updatePaymentButtonTotalPrice();
+                }
+            }
         },
             new OrderSummaryAdapter.OnSelectionChangedListener() {
                 @Override
                 public void onSelectionChanged(int selectedCount, int totalCount) {
                     // This callback updates the main checkbox based on list selection
-                    boolean allSelected = (totalCount > 0 && selectedCount == totalCount);
-                    boolean isIndeterminate = (selectedCount > 0 && selectedCount < totalCount);
 
-                    checkboxSelectAll.setOnCheckedChangeListener(null); // Remove listener to avoid loop
-                    if (isIndeterminate) {
-                        checkboxSelectAll.setChecked(false); // Set to false to show indeterminate state
-                        // You can add a visual indicator for indeterminate state if needed
-                        // e.g., using a custom drawable
-                    } else {
-                        checkboxSelectAll.setChecked(allSelected);
-                    }
-                    checkboxSelectAll.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                        // Re-add listener after state change
-                        if (orderSummaryAdapter != null) {
-                            orderSummaryAdapter.selectAll(isChecked);
-                        }
-                    });
                 }
         });
 
@@ -493,6 +572,35 @@ public class OrderSummaryActivity extends AppCompatActivity {
         // but leaving it here doesn't hurt as long as the adapter is not null when onStart() is called
     }
 
+    // Add a helper method to update the button text
+    private void updatePaymentButtonTotalPrice() {
+        double totalPriceOfSelectedItems = 0.0;
+
+        // Get the map containing item IDs and the quantity selected for payment
+        Map<String, Integer> itemsToPay = orderSummaryAdapter.getItemsToPay();
+
+        // Iterate through the adapter's list by index to get the OrderItem model object directly
+        for (int i = 0; i < orderSummaryAdapter.getItemCount(); i++) {
+
+            // Use the adapter's built-in method to get the OrderItem model at the current position
+            OrderItem item = orderSummaryAdapter.getItem(i);
+
+            // Get the unique ID for the lookup
+            String itemId = item.getId();
+
+            // Check if this item is one the user selected for payment
+            if (itemsToPay.containsKey(itemId)) {
+                int selectedQuantity = itemsToPay.get(itemId);
+
+                // Calculate the price for the selected quantity
+                totalPriceOfSelectedItems += item.getPrice() * selectedQuantity;
+            }
+        }
+
+        String priceText = String.format("€%.2f", totalPriceOfSelectedItems);
+        buttonCashPayment.setText("CASH (" + priceText + ")");
+        buttonCardPayment.setText("CARD (" + priceText + ")");
+    }
     private void updateOrderItemQuantity(OrderItem orderItem, int change) {
         DocumentReference orderItemDocRef = itemsOrderedRef.document(orderItem.getId());
         db.runTransaction(transaction -> {
@@ -582,61 +690,107 @@ public class OrderSummaryActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void finalizeSelectedItemsPayment(Map<String, OrderItem> paidItems) {
+    // OrderSummaryActivity.java
+
+    // RENAME and UPDATE this method to handle QUANTITY map
+    private void finalizeSelectedItemsPayment(Map<String, Integer> itemsToPayQuantities) {
         showProgressBar();
 
-        double paidTotal = 0.0;
-        for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
-            paidTotal += entry.getValue().getQuantity() * entry.getValue().getPrice();
-        }
+        // Use transaction for safe concurrent quantity update
+        db.runTransaction(transaction -> {
 
-        double finalPaidTotal = paidTotal;
+            // --- PHASE 1: READS AND CALCULATION ---
 
-        tableDocRef.get().addOnSuccessListener(tableSnapshot -> {
-            if (tableSnapshot.exists()) {
-                double currentTotal = tableSnapshot.getDouble("totalPrice");
-                double newTotal = currentTotal - finalPaidTotal;
+            // 1. Read the Table document (First Read)
+            DocumentSnapshot tableSnapshot = transaction.get(tableDocRef);
+            double currentTotal = tableSnapshot.exists() ? tableSnapshot.getDouble("totalPrice") : 0.0;
+            double paidTotal = 0.0;
 
-                WriteBatch batch = db.batch();
+            // 2. Storage for new data (must be calculated before writes)
+            // Store the final action and new quantity for each item
+            Map<String, Object> itemUpdates = new HashMap<>(); // Key: itemId, Value: Integer (remainingQty) or null (for delete)
 
-                for (Map.Entry<String, OrderItem> entry : paidItems.entrySet()) {
-                    DocumentReference itemDocRef = itemsOrderedRef.document(entry.getKey());
-                    batch.delete(itemDocRef);
+            // 3. Loop through all selected items to READ and calculate updates
+            for (Map.Entry<String, Integer> entry : itemsToPayQuantities.entrySet()) {
+                String itemId = entry.getKey();
+                int selectedQuantity = entry.getValue();
+
+                DocumentReference itemDocRef = itemsOrderedRef.document(itemId);
+                // !! CRITICAL: This is the second read. All item reads must happen now.
+                DocumentSnapshot itemSnapshot = transaction.get(itemDocRef);
+
+                if (itemSnapshot.exists()) {
+                    OrderItem item = itemSnapshot.toObject(OrderItem.class);
+
+                    if (item != null) {
+                        paidTotal += item.getPrice() * selectedQuantity;
+
+                        int originalQuantity = item.getQuantity();
+                        int remainingQuantity = originalQuantity - selectedQuantity;
+
+                        if (remainingQuantity > 0) {
+                            // Store the new quantity for an update later
+                            itemUpdates.put(itemId, remainingQuantity);
+                        } else {
+                            // Store null to indicate deletion later
+                            itemUpdates.put(itemId, null);
+                        }
+                    }
                 }
+            }
 
-                Map<String, Object> tableUpdates = new HashMap<>();
-                tableUpdates.put("totalPrice", newTotal);
-                currentTableTotalPrice = newTotal;
-                if (newTotal <= 0.0) {
-                    tableUpdates.put("status", "Available");
+            // --- PHASE 2: WRITES ---
+
+            // 4. Loop through the calculated updates and apply the writes
+            for (Map.Entry<String, Object> entry : itemUpdates.entrySet()) {
+                String itemId = entry.getKey();
+                Object remainingQuantityOrNull = entry.getValue();
+
+                DocumentReference itemDocRef = itemsOrderedRef.document(itemId);
+
+                if (remainingQuantityOrNull != null) {
+                    // PARTIAL PAYMENT: Update the item's quantity
+                    int remainingQuantity = (Integer) remainingQuantityOrNull;
+                    transaction.update(itemDocRef, "quantity", remainingQuantity);
+                } else {
+                    // FULL PAYMENT: Delete the item from the order
+                    transaction.delete(itemDocRef);
                 }
-                batch.update(tableDocRef, tableUpdates);
+            }
 
-                batch.commit()
-                        .addOnSuccessListener(aVoid -> {
-                            hideProgressBar();
-                            Toast.makeText(OrderSummaryActivity.this, "Selected items successfully paid for!", Toast.LENGTH_LONG).show();
-                            Log.d(TAG, "Partial payment batch committed successfully.");
-                            updateSummaryTableInfoDisplay();
+            // 5. Update Table Total Price (Final Write)
+            double newTotal = currentTotal - paidTotal;
+            Map<String, Object> tableUpdates = new HashMap<>();
+            tableUpdates.put("totalPrice", newTotal);
+            currentTableTotalPrice = newTotal;
 
-                            if (newTotal <= 0.0) {
-                                finish();
-                            }
-                        })
-                        .addOnFailureListener(e -> {
-                            hideProgressBar();
-                            Toast.makeText(OrderSummaryActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                            Log.e(TAG, "Finalize selected items payment batch failed: ", e);
-                        });
-            } else {
-                hideProgressBar();
-                Log.e(TAG, "Table document not found during payment finalization.");
-                Toast.makeText(OrderSummaryActivity.this, "Error: Table data missing.", Toast.LENGTH_LONG).show();
+            if (newTotal <= 0.0) {
+                tableUpdates.put("status", "Available");
+            }
+            transaction.update(tableDocRef, tableUpdates);
+
+            // Return the total amount paid
+            return paidTotal;
+
+        }).addOnSuccessListener(totalPaid -> {
+            // ... (Success logic remains the same)
+            hideProgressBar();
+            orderSummaryAdapter.getItemsToPay().clear();
+            orderSummaryAdapter.notifyDataSetChanged();
+
+            Toast.makeText(OrderSummaryActivity.this,
+                    String.format("Payment of €%.2f finalized.", (Double) totalPaid),
+                    Toast.LENGTH_LONG).show();
+
+            updateSummaryTableInfoDisplay();
+            if (currentTableTotalPrice <= 0.0) {
+                finish();
             }
         }).addOnFailureListener(e -> {
+            // ... (Failure logic remains the same)
             hideProgressBar();
-            Log.e(TAG, "Failed to get table document for payment: " + e.getMessage());
-            Toast.makeText(OrderSummaryActivity.this, "Error finalizing payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Log.e(TAG, "Finalize payment transaction failed: ", e);
+            Toast.makeText(OrderSummaryActivity.this, "Payment processing failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         });
     }
 
