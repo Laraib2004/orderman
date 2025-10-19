@@ -116,7 +116,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     }
 
     // ✅ Method to capture a PaymentIntent
-    public void capturePaymentIntent(
+    public void capturePaymentIntent(int tip, int subTotal,
             String restaurantId, String tableId, List<OrderItem> selectedOrderItems, String paymentIntentId, CaptureIntentCallback callback
     ) {
         // Initialize Firestore references
@@ -155,6 +155,8 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                                         conn.setDoOutput(true);
 
                                         JSONObject body = new JSONObject();
+                                        body.put("tip_amount_cents", tip);
+                                        body.put("subtotal_amount_cents", subTotal);
                                         body.put("payment_intent_id", paymentIntentId);
                                         body.put("business_address", address);
                                         body.put("business_city", city);
@@ -207,7 +209,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 });
     }
 
-    public void createCashPayment(String address, String city, String country,
+    public void createCashPayment(int subTotal, int tip, String address, String city, String country,
           String name, String province, String recipientCode, String vatNumber,
           List<OrderItem> items, String description, CreateCashCallback callback) {
         executor.execute(() -> {
@@ -219,6 +221,8 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 conn.setDoOutput(true);
 
                 JSONObject body = new JSONObject();
+                body.put("tip_amount_cents", tip);
+                body.put("subtotal_amount_cents", subTotal);
                 body.put("currency", "eur");
                 body.put("description", description);
                 body.put("business_address", address);

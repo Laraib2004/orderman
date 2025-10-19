@@ -19,6 +19,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -43,6 +44,8 @@ public class OrderSummaryActivity extends AppCompatActivity {
 
     private static final String TAG = "OrderSummaryActivity";
     public static final String EXTRA_SELECTED_ITEMS = "EXTRA_SELECTED_ITEMS";
+    public static final String EXTRA_TIP_AMOUNT = "EXTRA_TIP_AMOUNT";
+    public static final String EXTRA_SUBTOTAL_AMOUNT = "EXTRA_SUBTOTAL_AMOUNT";
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference itemsOrderedRef;
     private DocumentReference tableDocRef;
@@ -150,59 +153,56 @@ public class OrderSummaryActivity extends AppCompatActivity {
                 return;
             }
 
+            // --- CRITICAL FIXES FOR EFFECTIVELY FINAL ---
+
+            // 1. Calculate subTotal and build the list outside, ensuring final variables capture the result.
+            // The inner calculation is wrapped in a dedicated helper or logic block to guarantee finality.
+
+            double calculatedSubTotal = 0.0;
+            final ArrayList<OrderItem> selectedItemsList = new ArrayList<>();
+
+            // Iterate through adapter items to find selected ones and build the list
+            for (int i = 0; i < orderSummaryAdapter.getItemCount(); i++) {
+                OrderItem originalItem = orderSummaryAdapter.getItem(i);
+                String itemId = originalItem.getId();
+
+                if (itemsToPayQuantities.containsKey(itemId)) {
+                    int selectedQuantity = itemsToPayQuantities.get(itemId);
+
+                    // Accumulate subtotal. We use a local variable to accumulate the result.
+                    calculatedSubTotal += originalItem.getPrice() * selectedQuantity;
+
+                    // Create a new OrderItem object representing *only* the quantity being paid
+                    OrderItem paidItem = new OrderItem(
+                            itemId,
+                            originalItem.getName(),
+                            originalItem.getPrice(),
+                            selectedQuantity, // Use the selected quantity
+                            originalItem.getCategory(),
+                            originalItem.getType(),
+                            originalItem.getStatus()
+                    );
+                    paidItem.setId(originalItem.getId());
+                    selectedItemsList.add(paidItem);
+                }
+            }
+
+            // Now, ensure the variable used in the inner lambda is final or effectively final.
+            // Since 'calculatedSubTotal' is no longer modified after the loop, it is effectively final.
+            final double subTotal = calculatedSubTotal;
+
+
             new AlertDialog.Builder(this)
                     .setTitle("Confirm Cash Payment")
-                    .setMessage("Are you sure you want to mark the selected items as paid in cash?")
-                    .setPositiveButton("Yes", (dialog, which) -> {
-                        showProgressBar();
-                        String description = "Cash payment for Table " + tableNumber;
+                    .setMessage("Confirm payment selection. You will be prompted to add a tip.")
+                    .setPositiveButton("Proceed", (dialog, which) -> {
 
-                        // 2. CONVERT the quantity map back into a list of OrderItems for the provider/API
-                        List<OrderItem> selectedItemsList = createOrderItemListFromSelection(itemsToPayQuantities);
-
-                        restaurantDocRef.get().addOnCompleteListener(task -> {
-                            if (task.isSuccessful()) {
-                                DocumentSnapshot document = task.getResult();
-                                if(document.exists()) {
-                                    String address = document.getString("address");
-                                    String city = document.getString("city");
-                                    String country = document.getString("country");
-                                    String name = document.getString("name");
-                                    String province = document.getString("province");
-                                    String recipientCode = document.getString("recipient_code");
-                                    String vatNumber = document.getString("vat_number");
-                                    GeoPoint location = document.getGeoPoint("location");
-
-                                    CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
-                                    provider.createCashPayment(
-                                            address, city, country, name, province, recipientCode, vatNumber,
-                                            selectedItemsList, description, new CustomConnectionTokenProvider.CreateCashCallback() {
-                                                @Override
-                                                public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
-                                                    hideProgressBar();
-                                                    Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
-                                                    qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
-                                                    addReceiptToHistory(invoiceUrl, tableId, restaurantId);
-                                                    startActivity(qr);
-                                                    Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
-
-                                                    finalizeSelectedItemsPayment(itemsToPayQuantities);
-                                                }
-
-                                                @Override
-                                                public void onFailure(Exception e) {
-                                                    hideProgressBar();
-                                                    Toast.makeText(OrderSummaryActivity.this, "Failed to process cash payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                                                    Log.e(TAG, "Cash payment error", e);
-                                                }
-                                            });
-                                } else {
-                                    Log.d(TAG, "No such document for restaurantId: " + restaurantId);
-                                }
-                            } else {
-                                Log.e(TAG, "Failed to get restaurant document: ", task.getException());
-                            }
-                        });
+                        // 2. Launch Tipping Dialog
+                        showTippingDialog(
+                                false, // isCard = false (Cash payment)
+                                subTotal, // Now guaranteed effectively final
+                                selectedItemsList // Now guaranteed final
+                        );
                     })
                     .setNegativeButton("Cancel", null)
                     .show();
@@ -277,15 +277,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                         }
                     }
 
-
-                    discoverIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
-                    discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, totalPriceOfSelectedItems);
-                    discoverIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
-                    discoverIntent.putExtra(EXTRA_TABLE_ID, tableId);
-                    discoverIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
-
-                    // Now, launch the activity using the launcher
-                    cardPaymentLauncher.launch(discoverIntent);
+                    showTippingDialog(true, totalPriceOfSelectedItems, selectedItemsList);
                 }
 
             }
@@ -541,6 +533,143 @@ public class OrderSummaryActivity extends AppCompatActivity {
             Toast.makeText(this, "Failed to transfer items: " + e.getMessage(), Toast.LENGTH_LONG).show();
             Log.e(TAG, "Transfer transaction failed: ", e);
         });
+    }
+
+    // Add this method to OrderSummaryActivity.java
+
+    private void showTippingDialog(boolean isCard, double subTotal, ArrayList<OrderItem> itemsToPay) {
+        // 1. Inflate the custom layout (You need to create layout/dialog_tipping.xml)
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_tipping, null);
+
+        TextView tvSubTotal = dialogView.findViewById(R.id.tv_sub_total); // You need this ID in dialog_tipping.xml
+        EditText etTipAmount = dialogView.findViewById(R.id.et_tip_amount); // You need this ID
+
+        tvSubTotal.setText(getString(R.string.sub_total_format) + String.format(" %.2f", subTotal));
+
+        // 2. Build the AlertDialog
+        new AlertDialog.Builder(this)
+                .setTitle("Add Tip (Optional)")
+                .setView(dialogView)
+                .setPositiveButton("Pay", (dialog, which) -> {
+                    String tipText = etTipAmount.getText().toString();
+                    double tipAmount = 0.0;
+                    if (!tipText.isEmpty()) {
+                        try {
+                            tipAmount = Double.parseDouble(tipText);
+                        } catch (NumberFormatException e) {
+                            Toast.makeText(this, "Invalid tip amount. Proceeding with €0.00 tip.", Toast.LENGTH_LONG).show();
+                        }
+                    }
+                    double grandTotal = subTotal + tipAmount;
+
+                    // 3. PROCEED TO PAYMENT (Call the payment logic method)
+                    if (isCard)
+                        proceedToCardPayment(itemsToPay, grandTotal, subTotal, tipAmount);
+                    else
+                        proceedToCashPayment(itemsToPay, grandTotal, subTotal, tipAmount);
+                })
+                .setNegativeButton("Cancel", (dialog, which) -> {
+                    hideProgressBar();
+                    dialog.dismiss();
+                })
+                .show();
+    }
+
+    // OrderSummaryActivity.java
+
+// ... (Existing class code) ...
+
+    private void proceedToCashPayment(
+            ArrayList<OrderItem> selectedItemsList,
+            double grandTotal,
+            double subTotal,
+            double tipAmount) {
+
+        showProgressBar();
+        Log.d(TAG, "Proceeding to Cash Payment. Grand Total: €" + String.format("%.2f", grandTotal) +
+                ", SubTotal: €" + String.format("%.2f", subTotal) +
+                ", Tip: €" + String.format("%.2f", tipAmount));
+
+        // The description can be updated to reflect the new Grand Total
+        String description = "Cash payment for Table " + tableNumber + " (Total: €" + String.format("%.2f", grandTotal) + ")";
+
+        restaurantDocRef.get().addOnCompleteListener(task -> {
+            if (task.isSuccessful()) {
+                DocumentSnapshot document = task.getResult();
+                if(document.exists()) {
+                    String address = document.getString("address");
+                    String city = document.getString("city");
+                    String country = document.getString("country");
+                    String name = document.getString("name");
+                    String province = document.getString("province");
+                    String recipientCode = document.getString("recipient_code");
+                    String vatNumber = document.getString("vat_number");
+                    // GeoPoint location = document.getGeoPoint("location"); // Not needed for the provider call
+
+                    CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
+
+                    // CRITICAL CHANGE: Pass the subtotal and tip to the provider
+                    provider.createCashPayment(
+                            (int) (subTotal * 100), // Subtotal in cents
+                            (int) (tipAmount * 100), // Tip in cents
+                            address, city, country, name, province, recipientCode, vatNumber,
+                            selectedItemsList, description, new CustomConnectionTokenProvider.CreateCashCallback() {
+                                @Override
+                                public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
+                                    hideProgressBar();
+                                    Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
+                                    qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                    addReceiptToHistory(invoiceUrl, tableId, restaurantId);
+                                    startActivity(qr);
+                                    Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
+
+                                    // Use the original itemsToPayQuantities map to finalize the payment
+                                    // NOTE: You need to retrieve this map or ensure the selection is correct before calling this method.
+                                    // Assuming you can correctly finalize the items paid after a successful cash transaction:
+                                    finalizeSelectedItemsPayment(createItemsToPayQuantitiesMap(selectedItemsList));
+                                }
+
+                                @Override
+                                public void onFailure(Exception e) {
+                                    hideProgressBar();
+                                    Toast.makeText(OrderSummaryActivity.this, "Failed to process cash payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                    Log.e(TAG, "Cash payment error", e);
+                                }
+                            });
+                } else {
+                    Log.d(TAG, "No such document for restaurantId: " + restaurantId);
+                    hideProgressBar();
+                }
+            } else {
+                Log.e(TAG, "Failed to get restaurant document: ", task.getException());
+                hideProgressBar();
+            }
+        });
+    }
+
+    private void proceedToCardPayment(ArrayList<OrderItem> selectedItemsList, double grandTotal, double subTotal, double tipAmount) {
+        // Re-check NFC state right before launching payment
+        if (nfcAdapter == null || !nfcAdapter.isEnabled()) {
+            hideProgressBar();
+            // Handle NFC not ready here if necessary, though it should be caught earlier
+            return;
+        }
+
+        Log.d(TAG, "Proceeding to Card Payment. Grand Total: €" + String.format("%.2f", grandTotal) + ", Tip: €" + String.format("%.2f", tipAmount));
+
+        Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
+
+        // Pass the final values
+        discoverIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
+        discoverIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, grandTotal); // Pass the grand total (subtotal + tip)
+        discoverIntent.putExtra(EXTRA_TIP_AMOUNT, tipAmount); // Pass the tip amount separately if your reader app needs it
+        discoverIntent.putExtra(EXTRA_SUBTOTAL_AMOUNT, subTotal);
+        discoverIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+        discoverIntent.putExtra(EXTRA_TABLE_ID, tableId);
+        discoverIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+
+        cardPaymentLauncher.launch(discoverIntent);
+        // Note: hideProgressBar() will typically happen after the payment result returns via the launcher.
     }
 
     private void updateSummaryTableInfoDisplay() {
@@ -834,6 +963,25 @@ public class OrderSummaryActivity extends AppCompatActivity {
             Log.e(TAG, "Finalize payment transaction failed: ", e);
             Toast.makeText(OrderSummaryActivity.this, "Payment processing failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         });
+    }
+
+    /**
+     * Creates a map of item IDs to quantities from a list of OrderItem objects.
+     * This is used to convert the list back to the format needed for database finalization.
+     * * @param itemsList The list of OrderItem objects selected for payment (already containing
+     * the aggregated quantity to be paid for).
+     * @return A Map where keys are item IDs and values are the quantity to be paid for.
+     */
+    private Map<String, Integer> createItemsToPayQuantitiesMap(List<OrderItem> itemsList) {
+        Map<String, Integer> itemsToPayQuantities = new HashMap<>();
+
+        // Iterate through the list and map the ID to the quantity
+        for (OrderItem item : itemsList) {
+            // Use the ID as the key and the quantity as the value
+            itemsToPayQuantities.put(item.getId(), item.getQuantity());
+        }
+
+        return itemsToPayQuantities;
     }
 
     private void finalizeOrder() {

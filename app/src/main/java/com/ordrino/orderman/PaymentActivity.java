@@ -3,6 +3,8 @@ package com.ordrino.orderman;
 import static com.ordrino.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_INVOICE_PDF_URL;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SELECTED_ITEMS;
+import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SUBTOTAL_AMOUNT;
+import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_TIP_AMOUNT;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_NUMBER;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_TOTAL_PRICE;
@@ -44,6 +46,8 @@ public class PaymentActivity extends AppCompatActivity {
     private ArrayList<OrderItem> selectedItemsList;
     private String restaurantId;
     private String tableId;
+    private double tip;
+    private double subTotal;
     private  int tableNumber;
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference itemsOrderedRef; // Reference to the subcollection of ordered items
@@ -60,12 +64,16 @@ public class PaymentActivity extends AppCompatActivity {
                 getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
                 getIntent().hasExtra(EXTRA_TABLE_ID) &&
                 getIntent().hasExtra(EXTRA_TABLE_NUMBER) &&
-                getIntent().hasExtra(EXTRA_SELECTED_ITEMS)) {
+                getIntent().hasExtra(EXTRA_SELECTED_ITEMS) &&
+                getIntent().hasExtra(EXTRA_TIP_AMOUNT) &&
+                getIntent().hasExtra(EXTRA_SUBTOTAL_AMOUNT)) {
             currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
             restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
             tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
             tableNumber = getIntent().getIntExtra(EXTRA_TABLE_NUMBER, 0);
             selectedItemsList = getIntent().getParcelableArrayListExtra(EXTRA_SELECTED_ITEMS);
+            tip = getIntent().getDoubleExtra(EXTRA_TIP_AMOUNT, 0.0);
+            subTotal = getIntent().getDoubleExtra(EXTRA_SUBTOTAL_AMOUNT, 0.0);
         }
         else {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
@@ -107,6 +115,8 @@ public class PaymentActivity extends AppCompatActivity {
 
                                                                 // STEP 5: Capture it via backend
                                                                 tokenProvider.capturePaymentIntent(
+                                                                        (int)(tip*100),
+                                                                        (int)(subTotal*100),
                                                                         restaurantId, tableId,
                                                                         selectedItemsList,
                                                                         confirmedIntent.getId(),
