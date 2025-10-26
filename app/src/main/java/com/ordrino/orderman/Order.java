@@ -13,6 +13,7 @@ public class Order {
     private List<OrderItem> orderedItems;
     private String status; // e.g., "New", "Preparing", "Ready"
     private @ServerTimestamp Date timestamp;
+    private double totalPrice;
 
     public Order() {
         // Required public no-argument constructor for Firestore deserialization
@@ -57,6 +58,14 @@ public class Order {
 
     public void setTableNr(int tableNr) {
         this.tableNr = tableNr;
+    }
+
+    public double getTotalPrice() {
+        return totalPrice;
+    }
+
+    public void setTotalPrice(double totalPrice) {
+        this.totalPrice = totalPrice;
     }
 
     public DocumentReference getDocumentReference() {

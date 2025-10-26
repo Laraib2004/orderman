@@ -14,6 +14,7 @@ public class Table implements Serializable {
     private String section;
     private String currentOrderId;
     private double totalPrice;
+    private String activeOrderQueueId;
 
     public Table() {
         // No-argument constructor needed for Firestore
@@ -85,5 +86,7 @@ public class Table implements Serializable {
     public void setTotalPrice(double totalPrice) { // <--- ADD SETTER
         this.totalPrice = totalPrice;
     }
+    public String getActiveOrderQueueId() { return activeOrderQueueId; }
+    public void setActiveOrderQueueId(String id) { this.activeOrderQueueId = id; }
 
 }

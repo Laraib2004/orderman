@@ -32,6 +32,7 @@ import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.GeoPoint;
 import com.google.firebase.firestore.Query;
+import com.google.firebase.firestore.Transaction;
 import com.google.firebase.firestore.WriteBatch;
 
 import java.util.ArrayList;
@@ -61,6 +62,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private ProgressBar progressBar;
 
     private String restaurantId;
+    private String orderQueueId;
     private String tableId;
     private int tableNumber;
     private double currentTableTotalPrice;
@@ -142,6 +144,20 @@ public class OrderSummaryActivity extends AppCompatActivity {
             Log.e(TAG, "Required Intent extras missing for OrderSummaryActivity.");
             finish();
         }
+
+        // Fetch the activeOrderQueueId from the table document
+        tableDocRef.get().addOnSuccessListener(snapshot -> {
+            if (snapshot.exists() && snapshot.contains("activeOrderQueueId")) {
+                orderQueueId = snapshot.getString("activeOrderQueueId");
+                Log.d(TAG, "Fetched active OrderQueue ID: " + orderQueueId);
+                // Now that orderQueueId is set, you can safely set up your UI/listeners
+                // to display the items from this specific order document.
+            } else {
+                Toast.makeText(this, "Error: No active order found for this table.", Toast.LENGTH_LONG).show();
+            }
+        }).addOnFailureListener(e -> {
+            Log.e(TAG, "Failed to fetch table data for active order ID.", e);
+        });
 
 
         buttonCashPayment.setOnClickListener(v -> {
@@ -693,12 +709,32 @@ public class OrderSummaryActivity extends AppCompatActivity {
         orderSummaryAdapter = new OrderSummaryAdapter(options, new OrderSummaryAdapter.OnItemActionListener() {
             @Override
             public void onIncrementClick(OrderItem orderItem) {
-                updateOrderItemQuantity(orderItem, 1);
+                try {
+                    updateItemQuantityInOrderQueueAndTable(
+                            restaurantId,
+                            orderQueueId,
+                            tableId,
+                            orderItem.getMenuItemId(), // Use the unique ID of the item
+                            1 // change = +1
+                    );
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             @Override
             public void onDecrementClick(OrderItem orderItem) {
-                updateOrderItemQuantity(orderItem, -1);
+                try {
+                    updateItemQuantityInOrderQueueAndTable(
+                            restaurantId,
+                            orderQueueId,
+                            tableId,
+                            orderItem.getMenuItemId(), // Use the unique ID of the item
+                            -1 // change = -1
+                    );
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             @Override
@@ -772,58 +808,147 @@ public class OrderSummaryActivity extends AppCompatActivity {
         buttonCashPayment.setText("CASH (" + priceText + ")");
         buttonCardPayment.setText("CARD (" + priceText + ")");
     }
-    private void updateOrderItemQuantity(OrderItem orderItem, int change) {
-        DocumentReference orderItemDocRef = itemsOrderedRef.document(orderItem.getId());
-        db.runTransaction(transaction -> {
-            DocumentSnapshot snapshot = transaction.get(orderItemDocRef);
-            DocumentSnapshot tableSnapshot = transaction.get(tableDocRef);
-            int newQuantity = orderItem.getQuantity();
-            double itemPrice = orderItem.getPrice();
-            double currentTotal = 0.0;
-            if (snapshot.exists()) {
-                OrderItem existingOrderItem = snapshot.toObject(OrderItem.class);
-                if (existingOrderItem != null) {
-                    newQuantity = existingOrderItem.getQuantity() + change;
-                }
-            } else {
-                Log.e(TAG, "Order item not found in transaction: " + orderItem.getName());
-            }
-            if (tableSnapshot.exists()) {
-                Table table = tableSnapshot.toObject(Table.class);
-                if (table != null) {
-                    currentTotal = table.getTotalPrice();
-                }
-            }
-            if (newQuantity <= 0) {
-                transaction.delete(orderItemDocRef);
-                currentTotal -= (orderItem.getQuantity() * itemPrice);
-                Log.d(TAG, "Removing item: " + orderItem.getName() + ", new total: " + currentTotal);
-            } else {
-                OrderItem updatedOrderItem = new OrderItem(
-                        orderItem.getId(),
-                        orderItem.getName(),
-                        orderItem.getPrice(),
-                        newQuantity,
-                        orderItem.getCategory(),
-                        orderItem.getType(),
-                        orderItem.getStatus()
-                );
-                transaction.set(orderItemDocRef, updatedOrderItem);
-                currentTotal += (change * itemPrice);
-                Log.d(TAG, "Updating quantity for " + orderItem.getName() + " to " + newQuantity + ", new total: " + currentTotal);
-            }
-            Map<String, Object> tableUpdates = new HashMap<>();
-            tableUpdates.put("totalPrice", currentTotal);
-            currentTableTotalPrice = currentTotal;
-            transaction.update(tableDocRef, tableUpdates);
-            return null;
-        }).addOnSuccessListener(aVoid -> {
-            Log.d(TAG, "Order item quantity updated successfully.");
-            updateSummaryTableInfoDisplay();
-        }).addOnFailureListener(e -> {
-            Toast.makeText(OrderSummaryActivity.this, "Error updating item quantity: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.e(TAG, "Transaction failed for updating item quantity: " + e.getMessage(), e);
-        });
+    /**
+     * Updates the quantity of a specific item within the 'orderedItems' array
+     * and recalculates the order's total price using a Firestore Transaction.
+     * * @param restaurantId The ID of the restaurant.
+     * @param orderQueueId The document ID of the specific order in the 'orderQueue'.
+     * @param targetMenuItemId The unique ID of the item being changed (e.g., WLO83M7fsqWzwWQskzx4).
+     * @param change The difference in quantity (e.g., +2 to go from 3 to 5).
+     */
+    private void updateItemQuantityInOrderQueueAndTable(
+            String restaurantId,
+            String orderQueueId, // ID of the document in 'orderQueue'
+            String tableId,      // ID of the tables/{tableId} document
+            String targetMenuItemId,
+            int change
+    ) {
+        if (change == 0) return;
+
+        // References for the documents involved in the transaction
+        DocumentReference orderQueueDocRef = db.collection("restaurants")
+                .document(restaurantId)
+                .collection("orderQueue")
+                .document(orderQueueId);
+
+        DocumentReference currentOrderItemRef = tableDocRef
+                .collection("currentOrder")
+                .document(targetMenuItemId);
+
+        db.runTransaction((Transaction.Function<Void>) transaction -> {
+
+                    // --- READS: Must be done first ---
+                    Order orderQueueSnapshot = transaction.get(orderQueueDocRef).toObject(Order.class);
+                    DocumentSnapshot tableSnapshot = transaction.get(tableDocRef);
+
+                    // 1. Validate and get OrderQueue data
+                    if (orderQueueSnapshot == null) {
+                        Log.e(TAG,"OrderQueue document not found for ID: " + orderQueueId);
+                    }
+
+                    // 2. Validate and get Table data
+                    if (!tableSnapshot.exists()) {
+                        Log.e(TAG,"Table document not found for ID: " + tableId);
+                    }
+
+                    // Get necessary data from the objects
+                    List<OrderItem> currentItems = orderQueueSnapshot.getOrderedItems();
+                    if (currentItems == null || currentItems.isEmpty()) {
+                        Log.e(TAG,"Order contains no items.");
+                    }
+
+                    Table table = tableSnapshot.toObject(Table.class);
+                    if (table == null) {
+                        Log.e(TAG,"Could not deserialize Table object.");
+                    }
+
+                    // Initialize tracking variables
+                    double currentTableTotal = table.getTotalPrice();
+                    double updatedTableTotal = currentTableTotal;
+                    double currentOrderQueueTotal = orderQueueSnapshot.getTotalPrice();
+                    double updatedOrderQueueTotal = currentOrderQueueTotal;
+                    boolean itemFound = false;
+
+                    // --- FIND AND CALCULATE CHANGES (Applies to both Orders and Tables) ---
+                    for (int i = 0; i < currentItems.size(); i++) {
+                        OrderItem item = currentItems.get(i);
+
+                        if (item.getMenuItemId().equals(targetMenuItemId)) {
+
+                            int oldQuantity = item.getQuantity();
+                            int newQuantity = oldQuantity + change;
+                            double itemPrice = item.getPrice();
+
+                            // Calculate the price change based on the quantity change
+                            double priceChange = change * itemPrice;
+
+                            // Apply price change to BOTH totals
+                            updatedTableTotal += priceChange;
+                            updatedOrderQueueTotal += priceChange;
+                            currentTableTotalPrice = updatedTableTotal;
+
+                            itemFound = true;
+
+                            // --- A. UPDATE ORDER QUEUE ITEM (Local modification) ---
+                            if (newQuantity <= 0) {
+                                currentItems.remove(i); // Remove from the local array
+                            } else {
+                                item.setQuantity(newQuantity); // Update local quantity
+                            }
+
+                            // --- B. PREPARE CURRENT ORDER ITEM UPDATE/DELETE ---
+                            if (newQuantity <= 0) {
+                                // Item to be deleted from tables/currentOrder
+                                transaction.delete(currentOrderItemRef);
+                                Log.d(TAG, "Prepared DELETE for tables/currentOrder item.");
+                            } else {
+                                // Item to be updated/set in tables/currentOrder
+                                // We need a fresh OrderItem object with the new quantity for the SET operation
+                                OrderItem updatedCurrentOrderItem = new OrderItem(
+                                        item.getMenuItemId(), item.getName(), item.getPrice(),
+                                        newQuantity, item.getCategory(), item.getType(), item.getStatus()
+                                        /* Note: This assumes OrderItem constructor/fields align */
+                                );
+                                transaction.set(currentOrderItemRef, updatedCurrentOrderItem);
+                                Log.d(TAG, "Prepared SET for tables/currentOrder item with new quantity: " + newQuantity);
+                            }
+
+                            break; // Item processed, exit loop
+                        }
+                    }
+
+                    if (!itemFound) {
+                        Log.e(TAG,"Menu item " + targetMenuItemId + " not found in order items array.");
+                    }
+
+                    // --- WRITES: Commit all changes atomically ---
+
+                    // 1. Update the OrderQueue document (array and total price)
+                    transaction.update(orderQueueDocRef,
+                            "orderedItems", currentItems,
+                            "totalPrice", updatedOrderQueueTotal
+                    );
+                    Log.d(TAG, "Prepared UPDATE for orderQueue total: " + updatedOrderQueueTotal);
+
+                    // 2. Update the Tables document (total price only)
+                    transaction.update(tableDocRef,
+                            "totalPrice", updatedTableTotal
+                    );
+                    Log.d(TAG, "Prepared UPDATE for table total: " + updatedTableTotal);
+
+                    // 3. The currentOrderItemRef update/delete was handled inside the loop.
+
+                    return null;
+                })
+                .addOnSuccessListener(aVoid -> {
+                    Log.d(TAG, "Triple transaction completed successfully.");
+                    updateSummaryTableInfoDisplay();
+                    // UI refresh will be handled by your listeners...
+                })
+                .addOnFailureListener(e -> {
+                    Toast.makeText(this, "Synchronization failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    Log.e(TAG, "Triple update transaction failed: ", e);
+                });
     }
 
     private void removeOrderItem(OrderItem orderItem) {

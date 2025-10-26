@@ -355,21 +355,35 @@ public class OrderTakingActivity extends AppCompatActivity
             }
 
             // --- NEW: Add the full order to the preparer queue ---
+
+            double newQueueOrderTotal = 0.0;
+            for (OrderItem item : allOrderItemsList) {
+                // Ensure quantity and price are used for calculation
+                newQueueOrderTotal += (item.getQuantity() * item.getPrice());
+            }
+
             // Create a new Order object from the complete list of items
             Order newPreparerOrder = new Order();
             newPreparerOrder.setTableNr(tableNumber);
             newPreparerOrder.setOrderedItems(allOrderItemsList);
             newPreparerOrder.setStatus("New");
             newPreparerOrder.setTimestamp(new Date());
+            newPreparerOrder.setTotalPrice(newQueueOrderTotal);
 
             // Use .add to let Firestore generate a unique ID
-            transaction.set(db.collection("restaurants").document(restaurantId).collection("orderQueue").document(), newPreparerOrder);
+            // Use .set with a new document reference to let Firestore generate a unique ID
+            DocumentReference newOrderQueueRef = db.collection("restaurants")
+                    .document(restaurantId)
+                    .collection("orderQueue")
+                    .document();
+            transaction.set(newOrderQueueRef, newPreparerOrder);
             Log.d(TAG, "Transaction SET for new order in preparer queue.");
             // --- END NEW ---
 
             Map<String, Object> tableUpdates = new HashMap<>();
             tableUpdates.put("status", "Occupied");
             tableUpdates.put("totalPrice", currentConfirmedTableTotal);
+            tableUpdates.put("activeOrderQueueId", newOrderQueueRef.getId());
             transaction.update(tableDocRef, tableUpdates);
             Log.d(TAG, "Transaction UPDATE for table total to " + currentConfirmedTableTotal);
 
