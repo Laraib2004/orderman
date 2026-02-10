@@ -77,7 +77,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     }
 
     // ✅ Method to create a PaymentIntent
-    public void createPaymentIntent(int amount, CreateIntentCallback callback) {
+    public void createPaymentIntent(String restaurantId, int amount, CreateIntentCallback callback) {
         executor.execute(() -> {
             try {
                 URL url = new URL("https://ordrino-backend.onrender.com/create_payment_intent");
@@ -89,6 +89,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
 
                 JSONObject body = new JSONObject();
                 body.put("amount", amount); // in cents
+                body.put("restaurant_id", restaurantId);
 
                 OutputStream os = conn.getOutputStream();
                 os.write(body.toString().getBytes());
@@ -165,6 +166,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                                         body.put("province", province);  // Note: Check spelling ("province" vs "province")
                                         body.put("recipient_code", recipientCode);
                                         body.put("business_vat", vatNumber);
+                                        body.put("restaurant_id", restaurantId);
 
                                         JSONArray itemsArray = new JSONArray();
                                         for (OrderItem item : selectedOrderItems) {
@@ -210,7 +212,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     }
 
     public void createCashPayment(int subTotal, int tip, String address, String city, String country,
-          String name, String province, String recipientCode, String vatNumber,
+          String name, String province, String recipientCode, String vatNumber, String restaurantId,
           List<OrderItem> items, String description, CreateCashCallback callback) {
         executor.execute(() -> {
             try {
@@ -232,6 +234,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 body.put("province", province);  // Note: Check spelling ("province" vs "province")
                 body.put("recipient_code", recipientCode);
                 body.put("business_vat", vatNumber);
+                body.put("restaurant_id", restaurantId);
 
                 JSONArray itemsArray = new JSONArray();
                 for (OrderItem item : items) {
@@ -270,7 +273,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
         });
     }
 
-    public void createOrupdateProduct(MenuItem item, boolean create, CreateUpdateProductCallback callback) {
+    public void createOrupdateProduct(String restaurantId, MenuItem item, boolean create, CreateUpdateProductCallback callback) {
         executor.execute(() -> {
             try {
                 URL url = new URL("https://ordrino-backend.onrender.com/create-update-product");
@@ -288,6 +291,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 body.put("description", item.getDescription());
                 body.put("tax_code", item.getTaxCode());
                 body.put("prod_id", item.getProdId());
+                body.put("restaurant_id", restaurantId);
 
                 OutputStream os = conn.getOutputStream();
                 os.write(body.toString().getBytes());

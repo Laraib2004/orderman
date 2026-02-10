@@ -84,7 +84,7 @@ public class PaymentActivity extends AppCompatActivity {
 
         // STEP 1: Create PaymentIntent via backend
         CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider();
-        tokenProvider.createPaymentIntent((int) (currentTableTotalPrice*100), new CustomConnectionTokenProvider.CreateIntentCallback() {
+        tokenProvider.createPaymentIntent(restaurantId, (int) (currentTableTotalPrice*100), new CustomConnectionTokenProvider.CreateIntentCallback() {
             @Override
             public void onSuccess(String clientSecret) {
                 Log.d(TAG, "Client secret received: " + clientSecret);

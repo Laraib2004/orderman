@@ -214,7 +214,7 @@ public class AddEditMenuItemActivity extends AppCompatActivity {
             // Add new item - Firestore will automatically generate a random ID
             MenuItem newMenuItem = new MenuItem(name, description, price, category, type, available, imageUrl, taxCode, "");
 
-            conn.createOrupdateProduct(newMenuItem, true, new CustomConnectionTokenProvider.CreateUpdateProductCallback() {
+            conn.createOrupdateProduct(restaurantId, newMenuItem, true, new CustomConnectionTokenProvider.CreateUpdateProductCallback() {
                 @Override
                 public void onSuccess(String prodId) {
                     newMenuItem.setProdId(prodId);
@@ -250,7 +250,7 @@ public class AddEditMenuItemActivity extends AppCompatActivity {
 
             // Use the existing ID to update the document
 
-            conn.createOrupdateProduct(currentMenuItem, false, new CustomConnectionTokenProvider.CreateUpdateProductCallback() {
+            conn.createOrupdateProduct(restaurantId, currentMenuItem, false, new CustomConnectionTokenProvider.CreateUpdateProductCallback() {
                 @Override
                 public void onSuccess(String prodId) {
                     currentMenuItem.setProdId(prodId);

@@ -16,6 +16,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.nfc.NfcAdapter;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -35,6 +36,9 @@ import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.Transaction;
 import com.google.firebase.firestore.WriteBatch;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -620,6 +624,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                     String province = document.getString("province");
                     String recipientCode = document.getString("recipient_code");
                     String vatNumber = document.getString("vat_number");
+                    String restaurantId = document.getId();
                     // GeoPoint location = document.getGeoPoint("location"); // Not needed for the provider call
 
                     CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
@@ -628,7 +633,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                     provider.createCashPayment(
                             (int) (subTotal * 100), // Subtotal in cents
                             (int) (tipAmount * 100), // Tip in cents
-                            address, city, country, name, province, recipientCode, vatNumber,
+                            address, city, country, name, province, recipientCode, vatNumber, restaurantId,
                             selectedItemsList, description, new CustomConnectionTokenProvider.CreateCashCallback() {
                                 @Override
                                 public void onSuccess(String invoiceUrl, String invoicePdfUrl) {
@@ -637,6 +642,24 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                     qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
                                     addReceiptToHistory(invoiceUrl, tableId, restaurantId);
                                     startActivity(qr);
+                                    /*if (invoicePdfUrl != null) {
+                                        try {
+                                            // 1. Decode Base64 to Byte Array
+                                            byte[] pdfAsBytes = Base64.decode(invoicePdfUrl, Base64.DEFAULT);
+
+                                            // 2. Save to a temporary file
+                                            File pdfFile = new File(context.getCacheDir(), "scontrino.pdf");
+                                            FileOutputStream os = new FileOutputStream(pdfFile);
+                                            os.write(pdfAsBytes);
+                                            os.close();
+
+                                            // 3. Open PDF Viewer or Send to Printer
+                                            // (Use a FileProvider to open the file intent)
+
+                                        } catch (IOException e) {
+                                            e.printStackTrace();
+                                        }
+                                    }*/
                                     Toast.makeText(OrderSummaryActivity.this, "Cash payment recorded successfully.", Toast.LENGTH_SHORT).show();
 
                                     // Use the original itemsToPayQuantities map to finalize the payment
