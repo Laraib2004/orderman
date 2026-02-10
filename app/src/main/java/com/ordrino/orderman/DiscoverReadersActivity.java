@@ -2,6 +2,7 @@ package com.ordrino.orderman;
 
 import static com.ordrino.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SELECTED_ITEMS;
+import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_BACKEND_URL;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SUBTOTAL_AMOUNT;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_TIP_AMOUNT;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
@@ -47,6 +48,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
     private boolean isDiscovering = false;
     private double currentTableTotalPrice;
     private String restaurantId;
+    private String backendUrl;
     private ArrayList<OrderItem> selectedItemsList;
     private static final int REQUEST_CODE_LOCATION = 100;
 
@@ -83,7 +85,8 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                 getIntent().hasExtra(EXTRA_TABLE_NUMBER) &&
                 getIntent().hasExtra(EXTRA_SELECTED_ITEMS) &&
                 getIntent().hasExtra(EXTRA_TIP_AMOUNT) &&
-                getIntent().hasExtra(EXTRA_SUBTOTAL_AMOUNT)) {
+                getIntent().hasExtra(EXTRA_SUBTOTAL_AMOUNT) &&
+                getIntent().hasExtra(EXTRA_BACKEND_URL)) {
             currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
             restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
             tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
@@ -91,6 +94,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
             selectedItemsList = getIntent().getParcelableArrayListExtra(EXTRA_SELECTED_ITEMS);
             tip = getIntent().getDoubleExtra(EXTRA_TIP_AMOUNT, 0.0);
             subTotal = getIntent().getDoubleExtra(EXTRA_SUBTOTAL_AMOUNT, 0.0);
+            backendUrl = getIntent().getStringExtra(EXTRA_BACKEND_URL);
         }
         else {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
@@ -123,7 +127,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
         LogLevel logLevel = LogLevel.VERBOSE;
 
         // Create your token provider.
-        CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider();
+        CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider(restaurantId, backendUrl);
 
         // Pass in the current application context, your desired logging level, your token provider, and the listener you created
         if (!Terminal.isInitialized()) {
@@ -147,6 +151,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
             paymentIntent.putParcelableArrayListExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
             paymentIntent.putExtra(EXTRA_TIP_AMOUNT, tip);
             paymentIntent.putExtra(EXTRA_SUBTOTAL_AMOUNT, subTotal);
+            paymentIntent.putExtra(EXTRA_BACKEND_URL, backendUrl);
             launcher.launch(paymentIntent);
         }
     }
@@ -219,6 +224,7 @@ public class DiscoverReadersActivity extends AppCompatActivity {
                                         paymentIntent.putExtra(EXTRA_SELECTED_ITEMS, selectedItemsList);
                                         paymentIntent.putExtra(EXTRA_TIP_AMOUNT, tip);
                                         paymentIntent.putExtra(EXTRA_SUBTOTAL_AMOUNT, subTotal);
+                                        paymentIntent.putExtra(EXTRA_BACKEND_URL, backendUrl);
                                         launcher.launch(paymentIntent);
                                     });
                                 }

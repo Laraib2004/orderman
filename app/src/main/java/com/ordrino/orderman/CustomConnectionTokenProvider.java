@@ -21,7 +21,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,30 +29,55 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
-    private CollectionReference itemsOrderedRef; // Reference to the subcollection of ordered items
-    private DocumentReference tableDocRef; // Reference to the table document
+
+    // Cloud Firestore References
+    private CollectionReference itemsOrderedRef;
+    private DocumentReference tableDocRef;
     private DocumentReference restaurantDocRef;
 
+    // 🔹 NEW: Store these at class level
+    private final String restaurantId;
+    private final String backendUrl;
+
+    /**
+     * Constructor
+     * @param restaurantId The ID of the currently logged-in restaurant (from Firestore/Prefs)
+     * @param backendUrl The base URL of your backend (e.g. "https://ordrino-backend.onrender.com")
+     */
+    public CustomConnectionTokenProvider(String restaurantId, String backendUrl) {
+        this.restaurantId = restaurantId;
+        // Ensure URL doesn't end with slash to avoid double slashes
+        this.backendUrl = backendUrl.endsWith("/") ? backendUrl.substring(0, backendUrl.length() - 1) : backendUrl;
+    }
 
     @Override
     public void fetchConnectionToken(final ConnectionTokenCallback callback) {
         executor.execute(() -> {
             try {
-                // Replace with your server URL
-                URL url = new URL("https://ordrino-backend.onrender.com/connection_token");
+                // 1. Use Dynamic URL
+                URL url = new URL(backendUrl + "/connection_token");
 
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setDoOutput(true);
 
+                // 2. Send restaurant_id in the body (Required by your updated Backend)
+                JSONObject body = new JSONObject();
+                body.put("restaurant_id", restaurantId);
+
                 OutputStream os = conn.getOutputStream();
-                os.write("{}".getBytes());
+                os.write(body.toString().getBytes("UTF-8"));
                 os.flush();
                 os.close();
 
-                BufferedReader in = new BufferedReader(
-                        new InputStreamReader(conn.getInputStream()));
+                // 3. Read Response
+                int responseCode = conn.getResponseCode();
+                if (responseCode >= 400) {
+                    throw new Exception("Backend Error: " + responseCode);
+                }
+
+                BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 StringBuilder response = new StringBuilder();
                 String inputLine;
 
@@ -63,13 +87,19 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 in.close();
 
                 JSONObject jsonResponse = new JSONObject(response.toString());
-                String secret = jsonResponse.getString("secret");
-                Log.d("CustomConnection", secret);
 
-                // Run callback on the main thread
+                // Safety check
+                if (!jsonResponse.has("secret")) {
+                    throw new Exception("Invalid response: " + response.toString());
+                }
+
+                String secret = jsonResponse.getString("secret");
+                Log.d("CustomConnection", "Token fetched successfully");
+
                 mainHandler.post(() -> callback.onSuccess(secret));
 
             } catch (Exception e) {
+                Log.e("CustomConnection", "Error fetching token", e);
                 mainHandler.post(() -> callback.onFailure(
                         new ConnectionTokenException("Failed to fetch connection token", e)));
             }
@@ -80,7 +110,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     public void createPaymentIntent(String restaurantId, int amount, CreateIntentCallback callback) {
         executor.execute(() -> {
             try {
-                URL url = new URL("https://ordrino-backend.onrender.com/create_payment_intent");
+                URL url = new URL(backendUrl + "/create_payment_intent");
 
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
@@ -88,11 +118,11 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 conn.setDoOutput(true);
 
                 JSONObject body = new JSONObject();
-                body.put("amount", amount); // in cents
+                body.put("amount", amount);
                 body.put("restaurant_id", restaurantId);
 
                 OutputStream os = conn.getOutputStream();
-                os.write(body.toString().getBytes());
+                os.write(body.toString().getBytes("UTF-8"));
                 os.flush();
                 os.close();
 
@@ -124,91 +154,81 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
         tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
         itemsOrderedRef = tableDocRef.collection("currentOrder");
         restaurantDocRef = db.collection("restaurants").document(restaurantId);
+
         restaurantDocRef.get().addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        DocumentSnapshot document = task.getResult();
-                        if (document.exists()) {
-                            String address = document.getString("address");
-                            String city = document.getString("city");
-                            String country = document.getString("country");
-                            String name = document.getString("name");
-                            String province = document.getString("province");
-                            String recipientCode = document.getString("recipient_code");
-                            String vatNumber = document.getString("vat_number");
-                            GeoPoint location = document.getGeoPoint("location"); // Assuming it's a String
-                            itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
-                                executor.execute(() -> {
-                                    try {
-                                        /*List<OrderItem> orderItems = new ArrayList<>();
+            if (task.isSuccessful()) {
+                DocumentSnapshot document = task.getResult();
+                if (document.exists()) {
+                    String address = document.getString("address");
+                    String city = document.getString("city");
+                    String country = document.getString("country");
+                    String name = document.getString("name");
+                    String province = document.getString("province");
+                    String recipientCode = document.getString("recipient_code");
+                    String vatNumber = document.getString("vat_number");
 
-                                        for (DocumentSnapshot doc : querySnapshot.getDocuments()) {
-                                            OrderItem item = doc.toObject(OrderItem.class);
-                                            if (item != null) {
-                                                item.setId(doc.getId()); // Ensure ID is set
-                                                orderItems.add(item);
-                                            }
-                                        }*/
-                                        URL url = new URL("https://ordrino-backend.onrender.com/capture_payment_intent");
+                    // We don't really need GeoPoint here, removed for brevity
 
-                                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                                        conn.setRequestMethod("POST");
-                                        conn.setRequestProperty("Content-Type", "application/json");
-                                        conn.setDoOutput(true);
+                    itemsOrderedRef.get().addOnSuccessListener(querySnapshot -> {
+                        executor.execute(() -> {
+                            try {
+                                URL url = new URL(backendUrl + "/capture_payment_intent");
 
-                                        JSONObject body = new JSONObject();
-                                        body.put("tip_amount_cents", tip);
-                                        body.put("subtotal_amount_cents", subTotal);
-                                        body.put("payment_intent_id", paymentIntentId);
-                                        body.put("business_address", address);
-                                        body.put("business_city", city);
-                                        body.put("business_country", country);
-                                        body.put("business_name", name);
-                                        body.put("province", province);  // Note: Check spelling ("province" vs "province")
-                                        body.put("recipient_code", recipientCode);
-                                        body.put("business_vat", vatNumber);
-                                        body.put("restaurant_id", restaurantId);
+                                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                                conn.setRequestMethod("POST");
+                                conn.setRequestProperty("Content-Type", "application/json");
+                                conn.setDoOutput(true);
 
-                                        JSONArray itemsArray = new JSONArray();
-                                        for (OrderItem item : selectedOrderItems) {
-                                            Log.d("SELECTED ITEMS: ", item.getId());
-                                            JSONObject itemJson = new JSONObject();
-                                            itemJson.put("name", item.getName());
-                                            itemJson.put("quantity", item.getQuantity());
-                                            itemJson.put("unit_price", (int) (item.getPrice()*100)); // In cents
-                                            itemsArray.put(itemJson);
-                                        }
+                                JSONObject body = new JSONObject();
+                                body.put("tip_amount_cents", tip);
+                                body.put("subtotal_amount_cents", subTotal);
+                                body.put("payment_intent_id", paymentIntentId);
+                                body.put("business_address", address);
+                                body.put("business_city", city);
+                                body.put("business_country", country);
+                                body.put("business_name", name);
+                                body.put("province", province);
+                                body.put("recipient_code", recipientCode);
+                                body.put("business_vat", vatNumber);
+                                body.put("restaurant_id", restaurantId);
+                                body.put("backendUrl", backendUrl);
 
-                                        body.put("items", itemsArray);
+                                JSONArray itemsArray = new JSONArray();
+                                for (OrderItem item : selectedOrderItems) {
+                                    JSONObject itemJson = new JSONObject();
+                                    itemJson.put("name", item.getName());
+                                    itemJson.put("quantity", item.getQuantity());
+                                    itemJson.put("unit_price", (int) (item.getPrice()*100));
+                                    itemsArray.put(itemJson);
+                                }
+                                body.put("items", itemsArray);
 
-                                        OutputStream os = conn.getOutputStream();
-                                        os.write(body.toString().getBytes());
-                                        os.flush();
-                                        os.close();
+                                OutputStream os = conn.getOutputStream();
+                                os.write(body.toString().getBytes("UTF-8"));
+                                os.flush();
+                                os.close();
 
-                                        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                                        StringBuilder response = new StringBuilder();
-                                        String inputLine;
+                                BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                                StringBuilder response = new StringBuilder();
+                                String inputLine;
+                                while ((inputLine = in.readLine()) != null) response.append(inputLine);
+                                in.close();
 
-                                        while ((inputLine = in.readLine()) != null) {
-                                            response.append(inputLine);
-                                        }
-                                        in.close();
+                                JSONObject jsonResponse = new JSONObject(response.toString());
+                                String status = jsonResponse.optString("status", "unknown");
+                                String invoiceUrl = jsonResponse.optString("hosted_invoice_url", "");
+                                String invoicePdfUrl = jsonResponse.optString("invoice_pdf", "");
 
-                                        JSONObject jsonResponse = new JSONObject(response.toString());
-                                        String status = jsonResponse.getString("status");
-                                        String invoiceUrl = jsonResponse.getString("hosted_invoice_url");
-                                        String invoicePdfUrl = jsonResponse.getString("invoice_pdf");
+                                mainHandler.post(() -> callback.onSuccess(status, invoiceUrl, invoicePdfUrl));
 
-                                        mainHandler.post(() -> callback.onSuccess(status, invoiceUrl, invoicePdfUrl));
-
-                                    } catch (Exception e) {
-                                        mainHandler.post(() -> callback.onFailure(e));
-                                    }
-                                });
-                            });
-                        }
-                    }
-                });
+                            } catch (Exception e) {
+                                mainHandler.post(() -> callback.onFailure(e));
+                            }
+                        });
+                    });
+                }
+            }
+        });
     }
 
     public void createCashPayment(int subTotal, int tip, String address, String city, String country,
@@ -216,7 +236,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
           List<OrderItem> items, String description, CreateCashCallback callback) {
         executor.execute(() -> {
             try {
-                URL url = new URL("https://ordrino-backend.onrender.com/cash_payment");
+                URL url = new URL(backendUrl + "/cash_payment");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
@@ -231,10 +251,11 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 body.put("business_city", city);
                 body.put("business_country", country);
                 body.put("business_name", name);
-                body.put("province", province);  // Note: Check spelling ("province" vs "province")
+                body.put("province", province);
                 body.put("recipient_code", recipientCode);
                 body.put("business_vat", vatNumber);
                 body.put("restaurant_id", restaurantId);
+                body.put("backendUrl", backendUrl);
 
                 JSONArray itemsArray = new JSONArray();
                 for (OrderItem item : items) {
@@ -244,21 +265,17 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                     itemJson.put("unit_price", (int) (item.getPrice()*100)); // In cents
                     itemsArray.put(itemJson);
                 }
-
                 body.put("items", itemsArray);
 
                 OutputStream os = conn.getOutputStream();
-                os.write(body.toString().getBytes());
+                os.write(body.toString().getBytes("UTF-8"));
                 os.flush();
                 os.close();
 
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 StringBuilder response = new StringBuilder();
                 String inputLine;
-
-                while ((inputLine = in.readLine()) != null) {
-                    response.append(inputLine);
-                }
+                while ((inputLine = in.readLine()) != null) response.append(inputLine);
                 in.close();
 
                 JSONObject jsonResponse = new JSONObject(response.toString());
@@ -276,7 +293,7 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
     public void createOrupdateProduct(String restaurantId, MenuItem item, boolean create, CreateUpdateProductCallback callback) {
         executor.execute(() -> {
             try {
-                URL url = new URL("https://ordrino-backend.onrender.com/create-update-product");
+                URL url = new URL(backendUrl + "/create-update-product");
 
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
@@ -294,17 +311,14 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
                 body.put("restaurant_id", restaurantId);
 
                 OutputStream os = conn.getOutputStream();
-                os.write(body.toString().getBytes());
+                os.write(body.toString().getBytes("UTF-8"));
                 os.flush();
                 os.close();
 
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 StringBuilder response = new StringBuilder();
                 String inputLine;
-
-                while ((inputLine = in.readLine()) != null) {
-                    response.append(inputLine);
-                }
+                while ((inputLine = in.readLine()) != null) response.append(inputLine);
                 in.close();
 
                 JSONObject jsonResponse = new JSONObject(response.toString());
@@ -317,8 +331,6 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
             }
         });
     }
-
-
 
     // 🔹 Callback Interfaces
     public interface CreateIntentCallback {
@@ -340,5 +352,4 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
         void onSuccess(String prodId);
         void onFailure(Exception e);
     }
-
 }

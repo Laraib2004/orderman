@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.ArrayList;
 
 import com.google.firebase.firestore.CollectionReference;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 public class AddEditMenuItemActivity extends AppCompatActivity {
@@ -33,6 +34,7 @@ public class AddEditMenuItemActivity extends AppCompatActivity {
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference menuItemsRef; // Now dynamic
     private String restaurantId; // To store the received restaurant ID
+    private String backendUrl;
 
     private MenuItem currentMenuItem;
     private SpinnerItem selectedItemTaxCode;
@@ -68,6 +70,15 @@ public class AddEditMenuItemActivity extends AppCompatActivity {
         // Get restaurantId from the Intent
         if (getIntent().hasExtra(LoginActivity.EXTRA_RESTAURANT_ID)) {
             restaurantId = getIntent().getStringExtra(LoginActivity.EXTRA_RESTAURANT_ID);
+            var restaurantDocRef = db.collection("restaurants").document(restaurantId);
+            restaurantDocRef.get().addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    DocumentSnapshot document = task.getResult();
+                    if (document.exists()) {
+                        backendUrl = document.getString("api_domain");
+                    }
+                }
+            });
             // Construct the dynamic CollectionReference
             menuItemsRef = db.collection("restaurants").document(restaurantId).collection("menuItems");
         } else {
@@ -189,7 +200,7 @@ public class AddEditMenuItemActivity extends AppCompatActivity {
         boolean available = checkBoxAvailable.isChecked();
         String imageUrl = editTextImageUrl.getText().toString().trim();
         String taxCode = selectedItemTaxCode.getValue();
-        CustomConnectionTokenProvider conn = new CustomConnectionTokenProvider();
+        CustomConnectionTokenProvider conn = new CustomConnectionTokenProvider(restaurantId, backendUrl);
 
         if (name.isEmpty() || description.isEmpty() || priceStr.isEmpty() || category.isEmpty() || type.isEmpty() || taxCode.isEmpty()) {
             Toast.makeText(this, "Please fill all required fields", Toast.LENGTH_SHORT).show();

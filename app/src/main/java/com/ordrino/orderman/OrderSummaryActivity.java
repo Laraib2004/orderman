@@ -16,7 +16,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.nfc.NfcAdapter;
 import android.os.Bundle;
-import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -31,14 +30,10 @@ import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.GeoPoint;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.Transaction;
 import com.google.firebase.firestore.WriteBatch;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -51,6 +46,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     public static final String EXTRA_SELECTED_ITEMS = "EXTRA_SELECTED_ITEMS";
     public static final String EXTRA_TIP_AMOUNT = "EXTRA_TIP_AMOUNT";
     public static final String EXTRA_SUBTOTAL_AMOUNT = "EXTRA_SUBTOTAL_AMOUNT";
+    public static final String EXTRA_BACKEND_URL = "EXTRA_BACKEND_URL";
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference itemsOrderedRef;
     private DocumentReference tableDocRef;
@@ -68,6 +64,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
     private String restaurantId;
     private String orderQueueId;
     private String tableId;
+    private String backendUrl;
     private int tableNumber;
     private double currentTableTotalPrice;
     private NfcAdapter nfcAdapter;
@@ -161,6 +158,15 @@ public class OrderSummaryActivity extends AppCompatActivity {
             }
         }).addOnFailureListener(e -> {
             Log.e(TAG, "Failed to fetch table data for active order ID.", e);
+        });
+
+        restaurantDocRef.get().addOnCompleteListener(task -> {
+            if (task.isSuccessful()) {
+                DocumentSnapshot document = task.getResult();
+                if (document.exists()) {
+                    backendUrl = document.getString("api_domain");
+                }
+            }
         });
 
 
@@ -261,7 +267,6 @@ public class OrderSummaryActivity extends AppCompatActivity {
                 }
                 else  {
                     Log.d(TAG, "Card button clicked for Table " + tableNumber);
-                    Intent discoverIntent = new Intent(OrderSummaryActivity.this, DiscoverReadersActivity.class);
                     // You'll want to pass the total price of all selected items, not the whole table
                     Map<String, Integer> itemsToPayQuantities = orderSummaryAdapter.getItemsToPay();
                     if (itemsToPayQuantities.isEmpty()) {
@@ -625,9 +630,10 @@ public class OrderSummaryActivity extends AppCompatActivity {
                     String recipientCode = document.getString("recipient_code");
                     String vatNumber = document.getString("vat_number");
                     String restaurantId = document.getId();
+                    String backendUrl = document.getString("api_domain");
                     // GeoPoint location = document.getGeoPoint("location"); // Not needed for the provider call
 
-                    CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider();
+                    CustomConnectionTokenProvider provider = new CustomConnectionTokenProvider(restaurantId, backendUrl);
 
                     // CRITICAL CHANGE: Pass the subtotal and tip to the provider
                     provider.createCashPayment(
@@ -706,6 +712,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
         discoverIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
         discoverIntent.putExtra(EXTRA_TABLE_ID, tableId);
         discoverIntent.putExtra(EXTRA_TABLE_NUMBER, tableNumber);
+        discoverIntent.putExtra(EXTRA_BACKEND_URL, backendUrl);
 
         cardPaymentLauncher.launch(discoverIntent);
         // Note: hideProgressBar() will typically happen after the payment result returns via the launcher.

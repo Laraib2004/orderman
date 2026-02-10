@@ -3,6 +3,7 @@ package com.ordrino.orderman;
 import static com.ordrino.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_INVOICE_PDF_URL;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SELECTED_ITEMS;
+import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_BACKEND_URL;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_SUBTOTAL_AMOUNT;
 import static com.ordrino.orderman.OrderSummaryActivity.EXTRA_TIP_AMOUNT;
 import static com.ordrino.orderman.OrderTakingActivity.EXTRA_TABLE_ID;
@@ -20,9 +21,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.WriteBatch;
 import com.stripe.stripeterminal.Terminal;
 import com.stripe.stripeterminal.external.callable.Callback;
 import com.stripe.stripeterminal.external.callable.Cancelable;
@@ -45,6 +44,7 @@ public class PaymentActivity extends AppCompatActivity {
     private double currentTableTotalPrice;
     private ArrayList<OrderItem> selectedItemsList;
     private String restaurantId;
+    private String backendUrl;
     private String tableId;
     private double tip;
     private double subTotal;
@@ -66,7 +66,8 @@ public class PaymentActivity extends AppCompatActivity {
                 getIntent().hasExtra(EXTRA_TABLE_NUMBER) &&
                 getIntent().hasExtra(EXTRA_SELECTED_ITEMS) &&
                 getIntent().hasExtra(EXTRA_TIP_AMOUNT) &&
-                getIntent().hasExtra(EXTRA_SUBTOTAL_AMOUNT)) {
+                getIntent().hasExtra(EXTRA_SUBTOTAL_AMOUNT) &&
+                getIntent().hasExtra(EXTRA_BACKEND_URL)) {
             currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
             restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
             tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
@@ -74,6 +75,7 @@ public class PaymentActivity extends AppCompatActivity {
             selectedItemsList = getIntent().getParcelableArrayListExtra(EXTRA_SELECTED_ITEMS);
             tip = getIntent().getDoubleExtra(EXTRA_TIP_AMOUNT, 0.0);
             subTotal = getIntent().getDoubleExtra(EXTRA_SUBTOTAL_AMOUNT, 0.0);
+            backendUrl = getIntent().getStringExtra(EXTRA_BACKEND_URL);
         }
         else {
             Toast.makeText(this, "Error: Order information missing.", Toast.LENGTH_LONG).show();
@@ -83,7 +85,7 @@ public class PaymentActivity extends AppCompatActivity {
         }
 
         // STEP 1: Create PaymentIntent via backend
-        CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider();
+        CustomConnectionTokenProvider tokenProvider = new CustomConnectionTokenProvider(restaurantId, backendUrl);
         tokenProvider.createPaymentIntent(restaurantId, (int) (currentTableTotalPrice*100), new CustomConnectionTokenProvider.CreateIntentCallback() {
             @Override
             public void onSuccess(String clientSecret) {
