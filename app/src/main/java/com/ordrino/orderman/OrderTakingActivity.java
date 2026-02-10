@@ -2,10 +2,6 @@ package com.ordrino.orderman;
 
 import static com.ordrino.orderman.LoginActivity.EXTRA_RESTAURANT_ID;
 
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -15,6 +11,11 @@ import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.google.firebase.auth.FirebaseAuth;
@@ -45,32 +46,37 @@ public class OrderTakingActivity extends AppCompatActivity
     public static final String EXTRA_TABLE_STATUS = "extraTableStatus";
     public static final String EXTRA_TABLE_TOTAL_PRICE = "extraTableTotalPrice";
 
+    // Firestore
     private FirebaseFirestore db = FirebaseFirestore.getInstance();
     private CollectionReference menuItemsRef;
     private DocumentReference tableDocRef;
     private CollectionReference currentOrderSubcollectionRef;
-
-    private MenuItemAdapter menuAdapter;
     private ListenerRegistration tableListenerRegistration;
 
+    // UI Components
+    private TextView textViewTableInfo;
+    private RecyclerView recyclerViewMenuForOrder;
+    private RecyclerView recyclerViewCategories;
+    private Button buttonSendOrder;
+    private Button buttonSummaryOrder;
+    private ProgressBar progressBarLoading;
+    private ImageButton buttonViewHistory;
+
+    // Adapters
+    private MenuItemAdapter menuAdapter;
+    private CategoryFilterAdapter categoryAdapter;
+
+    // Data State
     private String restaurantId;
     private String tableId;
     private int tableNumber;
     private String tableStatus;
     private double currentTableTotalPrice;
     private double temporaryOrderTotal = 0.0;
-    private CategoryFilterAdapter categoryAdapter;
-
-    private TextView textViewTableInfo;
-    private RecyclerView recyclerViewMenuForOrder;
-    private RecyclerView recyclerViewCategories;
-    private Button buttonSendOrder;
-    private Button buttonSummaryOrder;
-    private ProgressBar progressBarLoading; // Declare ProgressBar
-
     private Map<String, PendingOrderItemData> pendingOrderItems = new HashMap<>();
     private Set<String> currentSelectedCategories = new HashSet<>();
 
+    // Internal Data Class
     private static class PendingOrderItemData {
         String menuItemId;
         int quantity;
@@ -101,23 +107,61 @@ public class OrderTakingActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_order_taking);
 
+        // 1. Initialize Views
         textViewTableInfo = findViewById(R.id.text_view_order_table_info);
         recyclerViewMenuForOrder = findViewById(R.id.recycler_view_menu_for_order);
         buttonSendOrder = findViewById(R.id.button_send_order);
         buttonSummaryOrder = findViewById(R.id.button_view_order_summary);
         recyclerViewCategories = findViewById(R.id.recycler_view_categories);
         progressBarLoading = findViewById(R.id.progress_bar_loading);
-        ImageButton buttonViewHistory = findViewById(R.id.button_view_history);
+        buttonViewHistory = findViewById(R.id.button_view_history);
 
-        if (recyclerViewCategories == null) {
-            Log.e(TAG, "onCreate: RecyclerView with ID recycler_view_categories not found in layout.");
-            Toast.makeText(this, "Layout error: Category RecyclerView not found.", Toast.LENGTH_LONG).show();
+        // 2. Setup Recycler Views Layout Managers
+        recyclerViewMenuForOrder.setLayoutManager(new WrapContentLinearLayoutManager(this));
+        recyclerViewCategories.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+
+        // 3. Setup Categories
+        String[] categoryArray = getResources().getStringArray(R.array.category_item);
+        List<String> allCategories = Arrays.asList(categoryArray);
+        categoryAdapter = new CategoryFilterAdapter(allCategories, this);
+        recyclerViewCategories.setAdapter(categoryAdapter);
+
+        // 4. Retrieve Intent Data & Initialize Firestore
+        if (getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
+                getIntent().hasExtra(EXTRA_TABLE_ID) &&
+                getIntent().hasExtra(EXTRA_TABLE_NUMBER) &&
+                getIntent().hasExtra(EXTRA_TABLE_STATUS) &&
+                getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE)) {
+
+            restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
+            tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
+            tableNumber = getIntent().getIntExtra(EXTRA_TABLE_NUMBER, 0);
+            tableStatus = getIntent().getStringExtra(EXTRA_TABLE_STATUS);
+            currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
+            temporaryOrderTotal = currentTableTotalPrice;
+
+            // Initialize References
+            menuItemsRef = db.collection("restaurants").document(restaurantId).collection("menuItems");
+            tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
+            currentOrderSubcollectionRef = tableDocRef.collection("currentOrder");
+
+            setTitle("Table " + tableNumber);
+            updateTableInfoDisplay();
+
+            // 5. Initialize Menu Adapter (Fix: Done once here)
+            setUpMenuRecyclerView();
+
+        } else {
+            Toast.makeText(this, "Error: Missing table information.", Toast.LENGTH_LONG).show();
+            finish();
             return;
         }
 
-        findViewById(R.id.button_view_order_summary).setOnClickListener(v -> {
+        // 6. Setup Buttons
+        buttonSendOrder.setOnClickListener(v -> sendOrderToFirestore());
+
+        buttonSummaryOrder.setOnClickListener(v -> {
             if (currentTableTotalPrice > 0) {
-                Toast.makeText(this, "Order summary for Table " + tableNumber + " (Current Confirmed Total: €" + String.format("%.2f", currentTableTotalPrice) + ")", Toast.LENGTH_SHORT).show();
                 Intent summaryIntent = new Intent(OrderTakingActivity.this, OrderSummaryActivity.class);
                 summaryIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
                 summaryIntent.putExtra(EXTRA_TABLE_ID, tableId);
@@ -125,62 +169,101 @@ public class OrderTakingActivity extends AppCompatActivity
                 summaryIntent.putExtra(EXTRA_TABLE_TOTAL_PRICE, currentTableTotalPrice);
                 startActivity(summaryIntent);
             } else {
-                Toast.makeText(this, "No orders to show!", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "No confirmed orders yet!", Toast.LENGTH_SHORT).show();
             }
-
         });
 
         buttonViewHistory.setOnClickListener(v -> {
-            if (restaurantId != null && tableId != null) {
-                Intent historyIntent = new Intent(OrderTakingActivity.this, HistoryReceiptActivity.class);
-                historyIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
-                historyIntent.putExtra(EXTRA_TABLE_ID, tableId);
-                startActivity(historyIntent);
-            } else {
-                Toast.makeText(this, "Table information is not available.", Toast.LENGTH_SHORT).show();
-            }
+            Intent historyIntent = new Intent(OrderTakingActivity.this, HistoryReceiptActivity.class);
+            historyIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+            historyIntent.putExtra(EXTRA_TABLE_ID, tableId);
+            startActivity(historyIntent);
         });
+    }
 
-        String[] categoryArray = getResources().getStringArray(R.array.category_item);
-        List<String> allCategories = Arrays.asList(categoryArray);
+    /**
+     * FIX: Configures the adapter. If it exists, updates options. If not, creates it.
+     */
+    private void setUpMenuRecyclerView() {
+        if (menuItemsRef == null) return;
 
-        categoryAdapter = new CategoryFilterAdapter(allCategories, this);
-        recyclerViewCategories.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
-        recyclerViewCategories.setAdapter(categoryAdapter);
+        // Base Query
+        Query query = menuItemsRef
+                .whereEqualTo("available", true)
+                .orderBy("name", Query.Direction.ASCENDING);
 
-        buttonSendOrder.setOnClickListener(v -> sendOrderToFirestore());
+        // Apply Category Filter
+        if (!currentSelectedCategories.isEmpty()) {
+            query = query.whereIn("category", new ArrayList<>(currentSelectedCategories));
+            Log.d(TAG, "Filtering by: " + currentSelectedCategories.toString());
+        }
 
-        if (getIntent().hasExtra(EXTRA_RESTAURANT_ID) &&
-                getIntent().hasExtra(EXTRA_TABLE_ID) &&
-                getIntent().hasExtra(EXTRA_TABLE_NUMBER) &&
-                getIntent().hasExtra(EXTRA_TABLE_STATUS)) {
-            if (getIntent().hasExtra(EXTRA_TABLE_TOTAL_PRICE)) {
-                restaurantId = getIntent().getStringExtra(EXTRA_RESTAURANT_ID);
-                tableId = getIntent().getStringExtra(EXTRA_TABLE_ID);
-                tableNumber = getIntent().getIntExtra(EXTRA_TABLE_NUMBER, 0);
-                tableStatus = getIntent().getStringExtra(EXTRA_TABLE_STATUS);
-                currentTableTotalPrice = getIntent().getDoubleExtra(EXTRA_TABLE_TOTAL_PRICE, 0.0);
-                temporaryOrderTotal = currentTableTotalPrice;
+        FirestoreRecyclerOptions<MenuItem> options = new FirestoreRecyclerOptions.Builder<MenuItem>()
+                .setQuery(query, MenuItem.class)
+                .build();
 
-                menuItemsRef = db.collection("restaurants").document(restaurantId).collection("menuItems");
-                tableDocRef = db.collection("restaurants").document(restaurantId).collection("tables").document(tableId);
-                currentOrderSubcollectionRef = tableDocRef.collection("currentOrder");
-
-                setTitle("Table " + tableNumber);
-                updateTableInfoDisplay();
-
-                Log.d(TAG, "OrderTakingActivity for Table ID: " + tableId + ", Initial Status: " + tableStatus + ", Initial Confirmed Total: " + currentTableTotalPrice);
-
-            } else {
-                Toast.makeText(this, "Error: Initial table total price missing.", Toast.LENGTH_LONG).show();
-                Log.e(TAG, "Required Intent extra EXTRA_TABLE_TOTAL_PRICE missing.");
-                finish();
-            }
-
+        if (menuAdapter == null) {
+            // First time setup
+            menuAdapter = new MenuItemAdapter(options);
+            menuAdapter.setOnItemQuantityChangeListener(this);
+            recyclerViewMenuForOrder.setAdapter(menuAdapter);
+            recyclerViewMenuForOrder.setItemAnimator(null);
         } else {
-            Toast.makeText(this, "Error: Table information missing.", Toast.LENGTH_LONG).show();
-            Log.e(TAG, "Required Intent extras missing (Restaurant ID, Table ID, Number, Status).");
-            finish();
+            // Hot swap options for smooth filtering
+            menuAdapter.updateOptions(options);
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Log.d(TAG, "onStart: Listening for updates");
+
+        // FIX: Start listening immediately
+        if (menuAdapter != null) {
+            menuAdapter.startListening();
+        }
+
+        // Listen for Table Updates (Total Price changes from other waiters)
+        if (tableDocRef != null) {
+            tableListenerRegistration = tableDocRef.addSnapshotListener(this, (snapshot, e) -> {
+                if (e != null) {
+                    Log.w(TAG, "Table listener failed", e);
+                    return;
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    Table table = snapshot.toObject(Table.class);
+                    if (table != null) {
+                        currentTableTotalPrice = table.getTotalPrice();
+                        tableStatus = table.getStatus();
+                        recalculateTemporaryTotal();
+                        updateTableInfoDisplay();
+                    }
+                }
+            });
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        Log.d(TAG, "onStop: Stopping listeners");
+
+        if (menuAdapter != null) {
+            menuAdapter.stopListening();
+        }
+        if (tableListenerRegistration != null) {
+            tableListenerRegistration.remove();
+        }
+    }
+
+    // Recalculates total based on DB confirmed total + local pending items
+    private void recalculateTemporaryTotal() {
+        temporaryOrderTotal = currentTableTotalPrice;
+        for (PendingOrderItemData item : pendingOrderItems.values()) {
+            // Note: Ideally, you should subtract the old quantity if modifying an existing order item.
+            // This logic assumes we are adding NEW items or purely local modifications.
+            temporaryOrderTotal += (item.getQuantity() * item.getPrice());
         }
     }
 
@@ -188,48 +271,22 @@ public class OrderTakingActivity extends AppCompatActivity
         textViewTableInfo.setText("Table: " + tableNumber + " - Total: €" + String.format("%.2f", temporaryOrderTotal));
     }
 
-    private void setUpMenuRecyclerView() {
-        Log.d(TAG, "setUpMenuRecyclerView: Initializing or re-initializing adapter.");
-        if (menuItemsRef == null) {
-            Log.e(TAG, "setUpMenuRecyclerView: menuItemsRef is null, cannot create query.");
-            Toast.makeText(this, "Error: Menu items reference not initialized for RecyclerView.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+    // --- Interface Implementations ---
 
-        Query query = menuItemsRef
-                .whereEqualTo("available", true)
-                .orderBy("name", Query.Direction.ASCENDING);
-
-        if (!currentSelectedCategories.isEmpty()) {
-            query = query.whereIn("category", new ArrayList<>(currentSelectedCategories));
-            Log.d(TAG, "setUpMenuRecyclerView: Filtering by categories: " + currentSelectedCategories.toString());
+    @Override
+    public void onCategoryClick(String categoryName, boolean isSelected) {
+        if (isSelected) {
+            currentSelectedCategories.add(categoryName);
         } else {
-            Log.d(TAG, "setUpMenuRecyclerView: No categories selected, showing all menu items.");
+            currentSelectedCategories.remove(categoryName);
         }
-
-        FirestoreRecyclerOptions<MenuItem> options = new FirestoreRecyclerOptions.Builder<MenuItem>()
-                .setQuery(query, MenuItem.class)
-                .build();
-
-        if (menuAdapter != null) {
-            menuAdapter.stopListening();
-            Log.d(TAG, "setUpMenuRecyclerView: Stopped previous adapter before re-creation.");
-        }
-
-        menuAdapter = new MenuItemAdapter(options);
-        Log.d(TAG, "setUpMenuRecyclerView: MenuItemAdapter initialized.");
-
-        menuAdapter.setOnItemQuantityChangeListener(this);
-
-        Log.d(TAG, "setUpMenuRecyclerView: Adapter and quantity change listeners prepared.");
-
-        recyclerViewMenuForOrder.setAdapter(menuAdapter);
+        // Re-run setup to filter
+        setUpMenuRecyclerView();
     }
 
     @Override
     public void onPlusClick(MenuItem menuItem, int position, int currentQuantity) {
         int newQuantity = currentQuantity + 1;
-        Log.d(TAG, "onPlusClick: " + menuItem.getName() + " quantity to " + newQuantity);
         updatePendingOrderItem(menuItem, newQuantity);
     }
 
@@ -237,21 +294,21 @@ public class OrderTakingActivity extends AppCompatActivity
     public void onMinusClick(MenuItem menuItem, int position, int currentQuantity) {
         if (currentQuantity > 0) {
             int newQuantity = currentQuantity - 1;
-            Log.d(TAG, "onMinusClick: " + menuItem.getName() + " quantity to " + newQuantity);
             updatePendingOrderItem(menuItem, newQuantity);
-        } else {
-            Toast.makeText(this, "Quantity cannot be less than 0.", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void updatePendingOrderItem(MenuItem menuItem, int quantity) {
+        // Get previous quantity for accurate total calculation
         int oldQuantity = 0;
         if (pendingOrderItems.containsKey(menuItem.getId())) {
             oldQuantity = pendingOrderItems.get(menuItem.getId()).getQuantity();
         }
 
+        // Update Adapter UI
         menuAdapter.updateItemQuantity(menuItem.getId(), quantity);
 
+        // Update Local State
         if (quantity > 0) {
             pendingOrderItems.put(menuItem.getId(), new PendingOrderItemData(
                     menuItem.getId(),
@@ -265,285 +322,139 @@ public class OrderTakingActivity extends AppCompatActivity
             pendingOrderItems.remove(menuItem.getId());
         }
 
+        // Update Total
         temporaryOrderTotal += (quantity - oldQuantity) * menuItem.getPrice();
         updateTableInfoDisplay();
     }
 
     private void sendOrderToFirestore() {
-        // Show loading spinner and disable button
         showLoading(true);
 
         if (FirebaseAuth.getInstance().getCurrentUser() == null) {
-            Log.e(TAG, "sendOrderToFirestore: User is NOT authenticated! Writes will fail due to rules.");
-            Toast.makeText(this, "You must be logged in to send an order.", Toast.LENGTH_LONG).show();
-            showLoading(false); // Hide spinner on error
+            Toast.makeText(this, "Not logged in!", Toast.LENGTH_SHORT).show();
+            showLoading(false);
             return;
         }
 
         if (pendingOrderItems.isEmpty()) {
-            Toast.makeText(this, "No items to send. Please add items first.", Toast.LENGTH_SHORT).show();
-            showLoading(false); // Hide spinner
+            Toast.makeText(this, "No items to send.", Toast.LENGTH_SHORT).show();
+            showLoading(false);
             return;
         }
 
-        Log.d(TAG, "sendOrderToFirestore: Attempting to send order with " + pendingOrderItems.size() + " unique items.");
-
         db.runTransaction(transaction -> {
-            // --- ALL READS FIRST ---
+            // 1. Read Table
             DocumentSnapshot tableSnapshot = transaction.get(tableDocRef);
             double currentConfirmedTableTotal = 0.0;
             if (tableSnapshot.exists()) {
                 Table table = tableSnapshot.toObject(Table.class);
-                if (table != null) {
-                    currentConfirmedTableTotal = table.getTotalPrice();
-                    Log.d(TAG, "sendOrderToFirestore: Current confirmed table total from DB: " + currentConfirmedTableTotal);
-                }
-            } else {
-                Log.e(TAG, "sendOrderToFirestore: Table document not found for ID: " + tableId + ". Assuming new table with 0 total.");
+                if (table != null) currentConfirmedTableTotal = table.getTotalPrice();
             }
 
+            // 2. Read Existing Items to merge quantities
             Map<String, Integer> existingQuantitiesMap = new HashMap<>();
             List<OrderItem> allOrderItemsList = new ArrayList<>();
 
             for (String menuItemId : pendingOrderItems.keySet()) {
-                DocumentReference orderItemDocRef = currentOrderSubcollectionRef.document(menuItemId);
-                DocumentSnapshot orderItemSnapshot = transaction.get(orderItemDocRef);
-                if (orderItemSnapshot.exists()) {
-                    OrderItem existingOrderItem = orderItemSnapshot.toObject(OrderItem.class);
-                    if (existingOrderItem != null) {
-                        existingQuantitiesMap.put(menuItemId, existingOrderItem.getQuantity());
-                    }
+                DocumentReference itemRef = currentOrderSubcollectionRef.document(menuItemId);
+                DocumentSnapshot itemSnap = transaction.get(itemRef);
+                if (itemSnap.exists()) {
+                    OrderItem existingItem = itemSnap.toObject(OrderItem.class);
+                    if (existingItem != null) existingQuantitiesMap.put(menuItemId, existingItem.getQuantity());
                 }
             }
 
-            // --- ALL WRITES AFTER ALL READS ---
+            // 3. Write Updates
             for (Map.Entry<String, PendingOrderItemData> entry : pendingOrderItems.entrySet()) {
                 String menuItemId = entry.getKey();
                 PendingOrderItemData itemData = entry.getValue();
+                int quantityToAdd = itemData.getQuantity();
 
-                int quantityFromUI = itemData.getQuantity();
+                DocumentReference itemRef = currentOrderSubcollectionRef.document(menuItemId);
+                int existingQty = existingQuantitiesMap.getOrDefault(menuItemId, 0);
+                int newTotalQty = existingQty + quantityToAdd;
 
-                DocumentReference orderItemDocRef = currentOrderSubcollectionRef.document(menuItemId);
-
-                int existingQuantity = existingQuantitiesMap.containsKey(menuItemId) ? existingQuantitiesMap.get(menuItemId) : 0;
-
-                int newTotalQuantity = existingQuantity + quantityFromUI;
-
+                // Update Price
                 double itemPrice = itemData.getPrice();
-                double priceChange = (newTotalQuantity - existingQuantity) * itemPrice;
+                currentConfirmedTableTotal += (quantityToAdd * itemPrice);
 
-                currentConfirmedTableTotal += priceChange;
-
-                if (newTotalQuantity > 0) {
-                    OrderItem updatedOrderItem = new OrderItem(
+                if (newTotalQty > 0) {
+                    OrderItem updatedItem = new OrderItem(
                             itemData.getMenuItemId(),
                             itemData.getName(),
                             itemData.getPrice(),
-                            newTotalQuantity,
+                            newTotalQty,
                             itemData.getCategory(),
                             itemData.getType(),
                             "Preparing"
                     );
-                    transaction.set(orderItemDocRef, updatedOrderItem);
-                    // Add to the list for the new preparer order
-                    allOrderItemsList.add(updatedOrderItem);
-                    Log.d(TAG, "Transaction SET for item " + itemData.getName() + " (ID: " + itemData.getMenuItemId() + ") with NEW TOTAL quantity " + newTotalQuantity);
+                    transaction.set(itemRef, updatedItem);
+
+                    // Add THIS BATCH to the preparer queue (kitchen)
+                    // Note: We create a specific OrderItem for the kitchen that only shows the NEW quantity
+                    OrderItem kitchenItem = new OrderItem(
+                            itemData.getMenuItemId(),
+                            itemData.getName(),
+                            itemData.getPrice(),
+                            quantityToAdd, // Only send new items to kitchen
+                            itemData.getCategory(),
+                            itemData.getType(),
+                            "New"
+                    );
+                    allOrderItemsList.add(kitchenItem);
                 } else {
-                    transaction.delete(orderItemDocRef);
-                    Log.d(TAG, "Transaction DELETE for item " + itemData.getName() + " (ID: " + itemData.getMenuItemId() + ")");
+                    transaction.delete(itemRef);
                 }
             }
 
-            // --- NEW: Add the full order to the preparer queue ---
+            // 4. Create Kitchen Ticket (Order Queue)
+            double newQueueTotal = 0.0;
+            for (OrderItem item : allOrderItemsList) newQueueTotal += (item.getQuantity() * item.getPrice());
 
-            double newQueueOrderTotal = 0.0;
-            for (OrderItem item : allOrderItemsList) {
-                // Ensure quantity and price are used for calculation
-                newQueueOrderTotal += (item.getQuantity() * item.getPrice());
-            }
+            Order kitchenOrder = new Order();
+            kitchenOrder.setTableNr(tableNumber);
+            kitchenOrder.setOrderedItems(allOrderItemsList);
+            kitchenOrder.setStatus("New");
+            kitchenOrder.setTimestamp(new Date());
+            kitchenOrder.setTotalPrice(newQueueTotal);
 
-            // Create a new Order object from the complete list of items
-            Order newPreparerOrder = new Order();
-            newPreparerOrder.setTableNr(tableNumber);
-            newPreparerOrder.setOrderedItems(allOrderItemsList);
-            newPreparerOrder.setStatus("New");
-            newPreparerOrder.setTimestamp(new Date());
-            newPreparerOrder.setTotalPrice(newQueueOrderTotal);
-
-            // Use .add to let Firestore generate a unique ID
-            // Use .set with a new document reference to let Firestore generate a unique ID
             DocumentReference newOrderQueueRef = db.collection("restaurants")
                     .document(restaurantId)
                     .collection("orderQueue")
                     .document();
-            transaction.set(newOrderQueueRef, newPreparerOrder);
-            Log.d(TAG, "Transaction SET for new order in preparer queue.");
-            // --- END NEW ---
+            transaction.set(newOrderQueueRef, kitchenOrder);
 
+            // 5. Update Table Status
             Map<String, Object> tableUpdates = new HashMap<>();
             tableUpdates.put("status", "Occupied");
             tableUpdates.put("totalPrice", currentConfirmedTableTotal);
             tableUpdates.put("activeOrderQueueId", newOrderQueueRef.getId());
             transaction.update(tableDocRef, tableUpdates);
-            Log.d(TAG, "Transaction UPDATE for table total to " + currentConfirmedTableTotal);
 
             return null;
+
         }).addOnSuccessListener(aVoid -> {
-            Toast.makeText(OrderTakingActivity.this, "Order sent successfully!", Toast.LENGTH_SHORT).show();
-            Log.d(TAG, "Order transaction completed successfully.");
+            Toast.makeText(this, "Order Sent!", Toast.LENGTH_SHORT).show();
 
+            // Clear local UI state
             pendingOrderItems.clear();
-
-            java.util.Map<String, Integer> selectedItems = menuAdapter.getSelectedItemsWithQuantities();
-            for (java.util.Map.Entry<String, Integer> entry : selectedItems.entrySet()) {
-                String itemId = entry.getKey();
-                menuAdapter.updateItemQuantity(itemId, 0);
+            Map<String, Integer> selectedItems = menuAdapter.getSelectedItemsWithQuantities();
+            for (String key : selectedItems.keySet()) {
+                menuAdapter.updateItemQuantity(key, 0);
             }
 
-            temporaryOrderTotal = currentTableTotalPrice;
-            updateTableInfoDisplay();
-            showLoading(false); // Hide spinner on success
+            // Refresh totals from the listener
+            showLoading(false);
 
         }).addOnFailureListener(e -> {
-            Toast.makeText(OrderTakingActivity.this, "Error sending order: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            Log.e(TAG, "Order transaction failed: " + e.getMessage(), e);
-            showLoading(false); // Hide spinner on failure
+            Toast.makeText(this, "Failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            showLoading(false);
         });
     }
 
     private void showLoading(boolean show) {
-        if (show) {
-            progressBarLoading.setVisibility(View.VISIBLE);
-            buttonSendOrder.setEnabled(false); // Disable button
-            buttonSummaryOrder.setEnabled(false);
-
-        } else {
-            progressBarLoading.setVisibility(View.GONE);
-            buttonSendOrder.setEnabled(true); // Enable button
-            buttonSummaryOrder.setEnabled(true);
-        }
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        Log.d(TAG, "onStart: OrderTakingActivity entered. Starting fresh RecyclerView setup.");
-
-        if (recyclerViewMenuForOrder != null) {
-            recyclerViewMenuForOrder.setLayoutManager(new LinearLayoutManager(this));
-            setUpMenuRecyclerView();
-
-            if (menuAdapter != null) {
-                recyclerViewMenuForOrder.setAdapter(menuAdapter);
-                recyclerViewMenuForOrder.post(() -> {
-                    if (menuAdapter != null) {
-                        menuAdapter.startListening();
-                        Log.d(TAG, "onStart: Menu adapter started listening (delayed via post()).");
-
-                        if (tableDocRef != null) {
-                            tableListenerRegistration = tableDocRef.addSnapshotListener(this, (snapshot, e) -> {
-                                if (e != null) {
-                                    Log.w(TAG, "Table snapshot listener failed.", e);
-                                    return;
-                                }
-                                if (snapshot != null && snapshot.exists()) {
-                                    Table table = snapshot.toObject(Table.class);
-                                    if (table != null) {
-                                        currentTableTotalPrice = table.getTotalPrice(); // Update confirmed total
-                                        tableStatus = table.getStatus();
-                                        // When table data updates, ensure temporary total accounts for pending items
-                                        // This is a subtle point: if a listener updates currentTableTotalPrice,
-                                        // our temporaryOrderTotal should incorporate it.
-                                        // The simplest way is to assume currentTableTotalPrice is the base
-                                        // and then add our pending changes.
-                                        temporaryOrderTotal = currentTableTotalPrice;
-                                        for (Map.Entry<String, PendingOrderItemData> entry : pendingOrderItems.entrySet()) {
-                                            String menuItemId = entry.getKey();
-                                            int pendingQuantity = entry.getValue().getQuantity();
-                                            // Find the MenuItem to get its price
-                                            MenuItem pendingMenuItem = null;
-                                            for (int i = 0; i < menuAdapter.getItemCount(); i++) {
-                                                if (menuAdapter.getItem(i).getId().equals(menuItemId)) {
-                                                    pendingMenuItem = menuAdapter.getItem(i);
-                                                    break;
-                                                }
-                                            }
-                                            if (pendingMenuItem != null) {
-                                                // We need to compare pending quantities with *existing* quantities
-                                                // on the table from the DB to truly calculate the difference.
-                                                // For simplicity here, we're assuming pendingOrderItems represents
-                                                // the *net change* to be applied.
-                                                // A more robust solution might fetch current order items from DB here too.
-                                                // For now, let's just add the total of *all* pending items.
-                                                temporaryOrderTotal += (pendingQuantity * pendingMenuItem.getPrice());
-                                            }
-                                        }
-                                        updateTableInfoDisplay();
-                                        Log.d(TAG, "Table info updated via snapshot listener: Confirmed Total=" + String.format("%.2f", currentTableTotalPrice) + ", Temporary Total=" + String.format("%.2f", temporaryOrderTotal) + ", Status=" + tableStatus);
-                                    }
-                                } else {
-                                    Log.d(TAG, "Table document does not exist or was removed.");
-                                    Toast.makeText(this, "Table information unavailable.", Toast.LENGTH_LONG).show();
-                                    finish();
-                                }
-                            });
-                            Log.d(TAG, "Table document snapshot listener added.");
-                        } else {
-                            Log.e(TAG, "tableDocRef is null, cannot add snapshot listener in onStart().");
-                        }
-
-                    } else {
-                        Log.w(TAG, "onStart: Menu adapter is null after post() delay (unexpected).");
-                    }
-                });
-            } else {
-                Log.e(TAG, "onStart: Menu adapter is null immediately after setUpMenuRecyclerView(). Cannot proceed.");
-                Toast.makeText(this, "Failed to initialize menu list.", Toast.LENGTH_LONG).show();
-                finish();
-            }
-        } else {
-            Log.e(TAG, "onStart: recyclerViewMenuForOrder is null. Layout not found or initialized correctly.");
-            Toast.makeText(this, "Layout error: Menu RecyclerView not found.", Toast.LENGTH_LONG).show();
-            finish();
-        }
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        Log.d(TAG, "onStop: OrderTakingActivity entered.");
-        if (menuAdapter != null) {
-            menuAdapter.stopListening();
-            Log.d(TAG, "onStop: Menu adapter stopped listening.");
-        } else {
-            Log.w(TAG, "onStop: Menu adapter is null, no need to stop listening.");
-        }
-
-        if (tableListenerRegistration != null) {
-            tableListenerRegistration.remove();
-            Log.d(TAG, "onStop: Table listener registration is null, no need to remove.");
-        } else {
-            Log.w(TAG, "onStop: Table listener registration is null, no need to remove.");
-        }
-    }
-
-    // This method is called when a category chip is clicked
-    @Override
-    public void onCategoryClick(String categoryName, boolean isSelected) {
-        if (isSelected) {
-            currentSelectedCategories.add(categoryName);
-        } else {
-            currentSelectedCategories.remove(categoryName);
-        }
-        Log.d(TAG, "Category clicked: " + categoryName + ", New selected state: " + isSelected + ". Current selected categories: " + currentSelectedCategories.toString());
-
-        // Re-setup the menu RecyclerView (this will create a new adapter with the updated filter)
-        setUpMenuRecyclerView();
-
-        // IMPORTANT: Start the NEW adapter listening for data
-        if (menuAdapter != null) {
-            menuAdapter.startListening();
-            Log.d(TAG, "onCategoryClick: Menu adapter restarted listening with new filter.");
-        }
+        progressBarLoading.setVisibility(show ? View.VISIBLE : View.GONE);
+        buttonSendOrder.setEnabled(!show);
+        buttonSummaryOrder.setEnabled(!show);
     }
 }
