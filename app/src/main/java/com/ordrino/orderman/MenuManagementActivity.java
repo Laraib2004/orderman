@@ -71,7 +71,7 @@ public class MenuManagementActivity extends AppCompatActivity implements Categor
             Toast.makeText(this, "Layout error: Menu RecyclerView not found.", Toast.LENGTH_LONG).show();
             return;
         }
-        recyclerViewMenu.setHasFixedSize(true);
+        // recyclerViewMenu.setHasFixedSize(true); EsLint issue
 
         // Initialize Category RecyclerView
         recyclerViewCategories = findViewById(R.id.recycler_view_categories);
