@@ -45,5 +45,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ordrino-release-signed
-        path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+        path: ${{ steps.sign_app.outputs.signedFile }}
         compression-level: 0
