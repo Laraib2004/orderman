@@ -32,9 +32,8 @@ jobs:
     # This step will FAIL if you haven't added the 4 Secrets to GitHub yet!
     - name: Sign App
       id: sign_app
-      uses: r0adkll/sign-android-release@v1
+      uses: ilharp/sign-android-release@v1
       with:
-        buildTools: 34.0.0
         releaseDirectory: app/build/outputs/apk/release
         signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         alias: ${{ secrets.KEY_ALIAS }}
