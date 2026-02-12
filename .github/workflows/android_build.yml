@@ -9,10 +9,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout the code (Updated to v4)
+    # 1. Checkout the code
     - uses: actions/checkout@v4
 
-    # 2. Set up Java environment (Updated to v4)
+    # 2. Set up Java environment
     - name: set up JDK 17
       uses: actions/setup-java@v4
       with:
@@ -24,23 +24,23 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # 4. Build the Release APK (Produces 'app-release-unsigned.apk')
+    # 4. Build the Release APK
     - name: Build Release APK
       run: ./gradlew assembleRelease
 
-    # 5. Sign the APK (Required for Updates)
-    # This step will FAIL if you haven't added the 4 Secrets to GitHub yet!
+    # 5. Sign the APK (Fixed)
     - name: Sign App
       id: sign_app
       uses: ilharp/sign-android-release@v1
       with:
-        releaseDir: app/build/outputs/apk/release     # Changed from 'releaseDirectory'
-        signingKey: ${{ secrets.ANDROID_KEYSTORE_BASE64 }} # Changed from 'signingKeyBase64'
-        keyAlias: ${{ secrets.KEY_ALIAS }}            # Changed from 'alias'
+        releaseDir: app/build/outputs/apk/release
+        signingKey: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        keyAlias: ${{ secrets.KEY_ALIAS }}
         keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
         keyPassword: ${{ secrets.KEY_PASSWORD }}
+        buildTools: 34.0.0  # <--- THIS IS THE FIX. IT FORCES IT TO USE THE INSTALLED VERSION.
       
-    # 6. Upload the Signed APK to GitHub (Updated to v4)
+    # 6. Upload the Signed APK to GitHub
     - name: Upload Signed APK
       uses: actions/upload-artifact@v4
       with:
