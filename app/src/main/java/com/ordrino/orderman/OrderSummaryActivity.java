@@ -438,6 +438,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
         Map<String, Object> receiptData = new HashMap<>();
         receiptData.put("url", url);
         receiptData.put("timestamp", new Date());
+        receiptData.put("voided", false);
 
         historyRef.add(receiptData)
                 .addOnSuccessListener(documentReference -> {
@@ -647,6 +648,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                     Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
                                     qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
                                     qr.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
+                                    qr.putExtra(EXTRA_TABLE_ID, tableId);
                                     addReceiptToHistory(invoiceUrl, tableId, restaurantId);
                                     startActivity(qr);
                                     /*if (invoicePdfUrl != null) {
