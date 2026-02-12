@@ -646,6 +646,7 @@ public class OrderSummaryActivity extends AppCompatActivity {
                                     hideProgressBar();
                                     Intent qr = new Intent(OrderSummaryActivity.this, InvoiceQRCodeActivity.class);
                                     qr.putExtra(EXTRA_INVOICE_PDF_URL, invoiceUrl);
+                                    qr.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
                                     addReceiptToHistory(invoiceUrl, tableId, restaurantId);
                                     startActivity(qr);
                                     /*if (invoicePdfUrl != null) {

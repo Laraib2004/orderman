@@ -8,7 +8,6 @@ import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.GeoPoint;
 import com.stripe.stripeterminal.external.callable.ConnectionTokenCallback;
 import com.stripe.stripeterminal.external.callable.ConnectionTokenProvider;
 import com.stripe.stripeterminal.external.models.ConnectionTokenException;
@@ -290,6 +289,66 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
         });
     }
 
+    // ✅ Method to Void a Receipt
+    public void voidReceipt(String receiptUuid, String restaurantId, VoidReceiptCallback callback) {
+        executor.execute(() -> {
+            try {
+                URL url = new URL(backendUrl + "/void_receipt");
+
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+
+                // Prepare JSON Body
+                JSONObject body = new JSONObject();
+                body.put("receipt_uuid", receiptUuid);
+                body.put("restaurant_id", restaurantId);
+
+                // Send Request
+                OutputStream os = conn.getOutputStream();
+                os.write(body.toString().getBytes("UTF-8"));
+                os.flush();
+                os.close();
+
+                // Check HTTP Response Code
+                int responseCode = conn.getResponseCode();
+                if (responseCode >= 400) {
+                    // Read error stream for better debugging
+                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+                    StringBuilder errorResponse = new StringBuilder();
+                    String line;
+                    while ((line = errorReader.readLine()) != null) errorResponse.append(line);
+                    errorReader.close();
+                    throw new Exception("Backend Error (" + responseCode + "): " + errorResponse.toString());
+                }
+
+                // Read Success Response
+                BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String inputLine;
+                while ((inputLine = in.readLine()) != null) response.append(inputLine);
+                in.close();
+
+                // Parse JSON
+                JSONObject jsonResponse = new JSONObject(response.toString());
+
+                if (jsonResponse.getBoolean("success")) {
+                    String voidUuid = jsonResponse.optString("void_uuid");
+                    String status = jsonResponse.optString("status");
+                    mainHandler.post(() -> callback.onSuccess(voidUuid, status));
+                } else {
+                    String errorMsg = jsonResponse.optString("error", "Unknown error");
+                    throw new Exception(errorMsg);
+                }
+
+            } catch (Exception e) {
+                Log.e("CustomConnection", "Void Receipt Failed", e);
+                mainHandler.post(() -> callback.onFailure(e));
+            }
+        });
+    }
+
     public void createOrupdateProduct(String restaurantId, MenuItem item, boolean create, CreateUpdateProductCallback callback) {
         executor.execute(() -> {
             try {
@@ -350,6 +409,11 @@ public class CustomConnectionTokenProvider implements ConnectionTokenProvider {
 
     public interface CreateUpdateProductCallback {
         void onSuccess(String prodId);
+        void onFailure(Exception e);
+    }
+
+    public interface VoidReceiptCallback {
+        void onSuccess(String voidUuid, String status);
         void onFailure(Exception e);
     }
 }

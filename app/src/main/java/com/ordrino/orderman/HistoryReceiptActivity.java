@@ -114,6 +114,7 @@ public class HistoryReceiptActivity extends AppCompatActivity {
     private void onReceiptClick(String receiptUrl) {
         Intent qrIntent = new Intent(this, InvoiceQRCodeActivity.class);
         qrIntent.putExtra(EXTRA_INVOICE_PDF_URL, receiptUrl);
+        qrIntent.putExtra(EXTRA_RESTAURANT_ID, restaurantId);
         startActivity(qrIntent);
     }
 
