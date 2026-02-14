@@ -26,6 +26,7 @@ public class PreparerDashboardActivity extends AppCompatActivity {
         btnLogout = findViewById(R.id.btn_logout);
 
         if (getIntent().hasExtra(LoginActivity.EXTRA_RESTAURANT_ID)) {
+            new AppUpdater(this).checkForUpdate();
             restaurantId = getIntent().getStringExtra(LoginActivity.EXTRA_RESTAURANT_ID);
         } else {
             Toast.makeText(this, "Error: Restaurant ID not found.", Toast.LENGTH_LONG).show();

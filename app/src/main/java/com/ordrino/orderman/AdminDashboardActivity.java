@@ -23,6 +23,8 @@ public class AdminDashboardActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_admin_dashboard);
 
+        new AppUpdater(this).checkForUpdate();
+
         // Retrieve the restaurantId from the Intent
         if (getIntent().hasExtra(LoginActivity.EXTRA_RESTAURANT_ID)) {
             restaurantId = getIntent().getStringExtra(LoginActivity.EXTRA_RESTAURANT_ID);

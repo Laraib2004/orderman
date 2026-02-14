@@ -27,6 +27,7 @@ public class WaiterDashboardActivity extends AppCompatActivity {
 
         if (getIntent().hasExtra(LoginActivity.EXTRA_RESTAURANT_ID)) {
             restaurantId = getIntent().getStringExtra(LoginActivity.EXTRA_RESTAURANT_ID);
+            new AppUpdater(this).checkForUpdate();
             // Optional: Toast.makeText(this, "Waiter for Restaurant ID: " + restaurantId, Toast.LENGTH_LONG).show();
         } else {
             Toast.makeText(this, "Error: Restaurant ID not found.", Toast.LENGTH_LONG).show();
